@@ -25,12 +25,12 @@ def create_app():
     
     # PERMISSIVE CORS FOR ALL ENVIRONMENTS
     CORS(app, resources={
-        r"/*": {
+        r"/api/*": {
             "origins": "*",
             "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
         }
-    })
+    }, supports_credentials=True)
     
     JWTManager(app)
     
