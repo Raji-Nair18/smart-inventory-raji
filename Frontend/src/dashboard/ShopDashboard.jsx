@@ -107,7 +107,7 @@ const ShopDashboard = () => {
 
   const fetchShopDetails = async () => {
      try {
-       const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/auth/me', {
+       const res = await fetch(`${API_BASE_URL}/auth/me`, {
          headers: { 'Authorization': `Bearer ${token}` }
        });
        if (res.ok) {
@@ -433,6 +433,7 @@ const ShopDashboard = () => {
   //   } catch (e) { console.error("DEBUG: fetchBills error:", e); }
   // };
   const acceptQuote = async (quoteId) => {
+      console.log("DEBUG: acceptQuote called with ID:", quoteId);
       if (!quoteId) {
           alert("Invalid Quote ID");
           return;
@@ -446,7 +447,7 @@ const ShopDashboard = () => {
       if (!confirmAccept) return;
 
       try {
-          const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/quotes/${quoteId}/accept`, { 
+          const res = await fetch(`${API_BASE_URL}/inventory/quotes/${quoteId}/accept`, { 
               method: 'POST', 
               headers: { 
                   'Authorization': `Bearer ${token}`,
@@ -487,7 +488,7 @@ const ShopDashboard = () => {
 
   const handleForceDbSync = async () => {
       try {
-          const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/inventory/diagnostic/db-sync', {
+          const res = await fetch(`${API_BASE_URL}/inventory/diagnostic/db-sync`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -507,7 +508,7 @@ const ShopDashboard = () => {
   const handleRetryRestock = async (billId) => {
       if (!window.confirm('Would you like to send the restock request again for this failed order?')) return;
       try {
-          const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/bills/${billId}/retry-restock`, {
+          const res = await fetch(`${API_BASE_URL}/inventory/bills/${billId}/retry-restock`, {
               method: 'POST',
               headers: { 
                   'Authorization': `Bearer ${token}`,
