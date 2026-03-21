@@ -396,7 +396,8 @@ def get_shop_products(shop_id):
         
         query = Product.query.filter(Product.shop_id == shop_id)
         if has_archived:
-            query = query.filter((Product.is_archived == False) | (Product.is_archived == 0) | (Product.is_archived == None))
+            # PostgreSQL is strict: use only boolean or None check
+            query = query.filter((Product.is_archived == False) | (Product.is_archived == None))
         
         products = query.all()
         print(f"DEBUG: Found {len(products)} products for shop {shop_id}")
