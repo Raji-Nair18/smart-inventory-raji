@@ -280,11 +280,11 @@ def record_transaction():
                     notify_suppliers_for_request(shop_obj, product, qty, u_type, u_val)
 
         except Exception as low_stock_err:
-             import traceback
-             print(f"ERROR in low stock check: {low_stock_err}")
-             traceback.print_exc()
+            import traceback
+            print(f"ERROR in low stock check: {low_stock_err}")
+            traceback.print_exc()
 
-         return jsonify({"message": "Success", "id": new_tx.id}), 201
+        return jsonify({"message": "Success", "id": new_tx.id}), 201
 
     except Exception as e:
         db.session.rollback()
