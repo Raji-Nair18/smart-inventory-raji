@@ -23,28 +23,14 @@ def create_app():
     db.init_app(app)
     Migrate(app, db)
     
-    # REMOVED flask-cors and rely ONLY on manual after_request for absolute control
-    # CORS(app) 
+    # EXTREMELY PERMISSIVE CORS FOR PRODUCTION STABILITY
+    CORS(app, resources={r"/*": {"origins": "*"}})
     
-    @app.before_request
-    def handle_preflight():
-        from flask import request, make_response
-        if request.method == "OPTIONS":
-            response = make_response()
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
-            response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
-            response.headers['Access-Control-Max-Age'] = '86400'
-            return response
-        print(f"DEBUG: Request: {request.method} {request.url}")
-
     @app.after_request
     def add_cors_headers(response):
-        # Explicitly set headers to avoid duplicates or missing ones
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
         response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
-        response.headers['Access-Control-Max-Age'] = '86400'
         return response
 
     # Global error handler to ensure CORS headers are sent even on 500 errors
@@ -54,11 +40,10 @@ def create_app():
         print(f"ERROR: Backend crash on {request.method} {request.url}: {str(e)}")
         response = jsonify({"message": f"Backend Error: {str(e)}"})
         response.status_code = 500
-        # Direct assignment to guarantee headers on error
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
-        response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
         return response
+
+    JWTManager(app)
 
     JWTManager(app)
     
