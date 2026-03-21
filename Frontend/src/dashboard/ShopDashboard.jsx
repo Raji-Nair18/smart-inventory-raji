@@ -426,6 +426,10 @@ const ShopDashboard = () => {
           alert("Your session has expired. Please login again.");
           return;
       }
+      
+      const confirmAccept = window.confirm("Are you sure you want to accept this quote? This will generate a bill for payment.");
+      if (!confirmAccept) return;
+
       try {
           const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/quotes/${quoteId}/accept`, { 
               method: 'POST', 
@@ -450,11 +454,33 @@ const ShopDashboard = () => {
               fetchRequests();
               setActiveTab('bills');
           } else {
-              alert(data.message || 'Failed to accept quote');
+              // If we see a "relation does not exist" error, it's a database schema issue
+              if (data.message && data.message.includes("Database schema issue")) {
+                  const retrySync = window.confirm("It looks like the database tables aren't ready yet. Would you like the system to try and synchronize them now?");
+                  if (retrySync) {
+                      handleForceDbSync();
+                  }
+              } else {
+                  alert(data.message || 'Failed to accept quote');
+              }
           }
       } catch (e) { 
           console.error('Accept quote error:', e);
-          alert(`Network error: ${e.message}. This might be a CORS or backend connection issue.`); 
+          alert(`Network error: ${e.message}. This usually happens if the backend is still waking up or there is a connection issue. Please wait 30 seconds and try again.`); 
+      }
+  };
+
+  const handleForceDbSync = async () => {
+      try {
+          const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/inventory/diagnostic/db-sync', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          alert(data.message);
+          window.location.reload(); // Reload to refresh data
+      } catch (e) {
+          alert("Failed to reach the server for database sync.");
       }
   };
 
