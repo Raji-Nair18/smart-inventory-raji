@@ -27,8 +27,15 @@ def create_app():
     # CORS(app) 
     
     @app.before_request
-    def log_request_info():
-        from flask import request
+    def handle_preflight():
+        from flask import request, make_response
+        if request.method == "OPTIONS":
+            response = make_response()
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
+            response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
+            response.headers['Access-Control-Max-Age'] = '86400'
+            return response
         print(f"DEBUG: Request: {request.method} {request.url}")
 
     @app.after_request
