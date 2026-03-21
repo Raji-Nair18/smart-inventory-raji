@@ -277,7 +277,7 @@ def record_transaction():
             # 1. Check for individual variation low stock (Primary logic)
             has_variations = len(product.unit_options) > 0
             for opt in product.unit_options:
-                if opt.stock_quantity <= opt.reorder_level:
+                if opt.stock_quantity < opt.reorder_level:
                     # Check for existing request for this variation specifically (via notes)
                     active_statuses = ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection', 'Awaiting Payment', 'Paid', 'Shipped']
                     existing_var_req = SupplyRequest.query.filter(
@@ -318,7 +318,7 @@ def record_transaction():
                 
                 print(f"DEBUG: Checking Stock. Product: {product.name}, Stock: {product.stock_quantity}, Reorder Lvl: {reorder_lvl}")
                 
-                if product.stock_quantity <= reorder_lvl:
+                if product.stock_quantity < reorder_lvl:
                     # Trigger Notification
                     msg = f"Alert: Product {product.name} (SKU: {product.sku}) is low on stock. Current: {product.stock_quantity}. Reorder Level: {reorder_lvl}"
                     print(f"TRIGGER NOTIFICATION: {msg}")
@@ -768,7 +768,7 @@ def add_product():
 
             for opt in p.unit_options:
                 print(f"DEBUG: Checking initial stock for variation {opt.unit_value} {opt.unit_type}: Stock={opt.stock_quantity}, Reorder={opt.reorder_level}")
-                if opt.stock_quantity <= opt.reorder_level:
+                if opt.stock_quantity < opt.reorder_level:
                     # Check if request already exists to avoid duplicates
                     active_statuses = ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection', 'Awaiting Payment', 'Paid', 'Shipped']
                     existing = SupplyRequest.query.filter(
