@@ -546,14 +546,20 @@ const ShopDashboard = () => {
           // Simulate network delay
           await new Promise(resolve => setTimeout(resolve, 2000));
           
+          console.log("DEBUG: Processing payment for bill:", selectedBill.id);
           const res = await fetch(`${API_BASE_URL}/billing/pay/${selectedBill.id}`, {
               method: 'POST',
               headers: { 
                   'Authorization': `Bearer ${token}`,
-                  'Content-Type': 'application/json'
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json'
               },
               body: JSON.stringify({})
           });
+          
+          console.log("DEBUG: Payment response status:", res.status);
+          const data = await res.json();
+          console.log("DEBUG: Payment response data:", data);
           
           if (res.ok) {
               alert('Payment Successful! Order is now active.');
@@ -562,7 +568,6 @@ const ShopDashboard = () => {
               fetchBills();
               setActiveTab('orders'); // Move to My Orders page
           } else {
-              const data = await res.json();
               alert(data.message || 'Payment failed');
           }
       } catch (e) {
