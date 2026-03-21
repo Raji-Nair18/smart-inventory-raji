@@ -433,7 +433,7 @@ const ShopDashboard = () => {
                   'Authorization': `Bearer ${token}`,
                   'Content-Type': 'application/json'
               },
-              body: JSON.stringify({ accept: true }) // Send a dummy body to ensure preflight and server handling
+              body: JSON.stringify({ accept: true })
           });
           
           let data;
@@ -468,7 +468,11 @@ const ShopDashboard = () => {
       try {
           const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/bills/${billId}/retry-restock`, {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` }
+              headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({})
           });
           const data = await res.json();
           if (res.ok) {
@@ -493,7 +497,11 @@ const ShopDashboard = () => {
           
           const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/billing/pay/${selectedBill.id}`, {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` }
+              headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({})
           });
           
           if (res.ok) {
@@ -517,7 +525,10 @@ const ShopDashboard = () => {
       try {
           const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/supplier/assign', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}` 
+              },
               body: JSON.stringify({ supplier_id: id })
           });
           const data = await res.json();

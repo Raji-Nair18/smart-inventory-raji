@@ -11,11 +11,6 @@ from threading import Thread
 import time
 from datetime import date
 
-
-
-
-
-
 # Load environment variables from .env file
 load_dotenv()
 
@@ -26,8 +21,16 @@ def create_app():
     # Initialize Extensions
     db.init_app(app)
     Migrate(app, db)
-    # Enable CORS for ALL origins and ALL routes (Development Mode)
-    CORS(app, resources={r"/*": {"origins": "*"}})
+    
+    # PERMISSIVE CORS FOR ALL ENVIRONMENTS
+    CORS(app, resources={
+        r"/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Origin"]
+        }
+    })
+    
     JWTManager(app)
     
     # Register Blueprints
@@ -200,8 +203,7 @@ if __name__ == '__main__':
             print("Database ready.")
             
         print("Backend server is starting on http://0.0.0.0:5001")
-        port = int(os.environ.get("PORT", 5000))
-        app.run(host='0.0.0.0', port=port)
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)))
     except Exception as e:
         print(f"CRITICAL ERROR DURING STARTUP: {e}")
         import traceback

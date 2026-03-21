@@ -50,21 +50,27 @@ const SupplierDashboard = () => {
 
   const fetchCatalog = async () => {
     try {
-      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/supplier/catalog', { headers: { 'Authorization': `Bearer ${token}` }});
+      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/supplier/catalog', { 
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (res.ok) setCatalog(await res.json());
     } catch (e) {}
   };
 
   const fetchLinkedShops = async () => {
     try {
-      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/supplier/linked-shops', { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/supplier/linked-shops', { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
       if (res.ok) setLinkedShops(await res.json());
     } catch (e) {}
   };
 
   const fetchBills = async () => {
     try {
-      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/billing/supplier', { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/billing/supplier', { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
       if (res.ok) setBills(await res.json());
     } catch (e) {}
   };

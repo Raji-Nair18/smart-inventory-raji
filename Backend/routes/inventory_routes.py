@@ -45,237 +45,155 @@ def get_shop_id_for_user(current_user):
 @inventory_bp.route('/transaction', methods=['POST'])
 @jwt_required()
 def record_transaction():
-    print("\n" + "="*50)
-    print("CRITICAL DEBUG: record_transaction called!")
+    from models import Product, Salesman, Transaction, Shop, ExpiredProduct, Customer, ProductUnitOption, BirthdayOffer
+    from datetime import datetime
+    
     try:
         current_user = get_jwt_identity()
         data = request.get_json()
-        print(f"DEBUG: Request Data: {data}")
         
         product_id = data.get('product_id')
-        transaction_type = data.get('type') # 'SALE' or 'RESTOCK'
+        transaction_type = data.get('type', 'SALE')
         quantity = int(data.get('quantity', 0))
         salesman_id_code = data.get('salesman_id_code')
-        scanned_qr_code = data.get('scanned_qr_code') # The code from barcode reader
+        scanned_qr_code = data.get('scanned_qr_code')
+        unit_option_id = data.get('unit_option_id')
         
-        from models import Product, Salesman, Transaction, Shop, ExpiredProduct
-        from datetime import datetime
-        
+        # 1. Product Lookup
         product = Product.query.get(product_id)
         if not product:
-            # Fallback: check if product_id is actually an integer
             try:
-                pid = int(product_id)
-                product = Product.query.get(pid)
+                product = Product.query.get(int(product_id))
             except:
-                product = None
-                
+                pass
+        
         if not product:
-            print(f"DEBUG: Product {product_id} not found!")
-            return jsonify({"message": f"Product with ID {product_id} not found"}), 404
+            return jsonify({"message": f"Product #{product_id} not found in database"}), 404
 
-        print(f"DEBUG: Product Found: {product.name}, Current Product Stock: {product.stock_quantity}")
+        # 2. Permissions & Shop Validation
+        if current_user['role'] == 'salesman':
+            salesman = Salesman.query.filter_by(user_id=current_user['id']).first()
+            if not salesman or salesman.shop_id != product.shop_id:
+                return jsonify({"message": "Unauthorized: Product belongs to another shop"}), 403
+            if not salesman_id_code:
+                salesman_id_code = salesman.salesman_id_code
         
-        # TEMPORARY BYPASS: Force allow sale if it's "SALE" just to debug
-        # if transaction_type == 'SALE':
-        #     print("DEBUG: TEMPORARY BYPASS - Proceeding with sale regardless of stock")
-        
-        # Customer handling logic... (rest of function)
+        # 3. Sale-Specific Validation (QR Scan)
+        if transaction_type == 'SALE':
+            if not scanned_qr_code:
+                return jsonify({"message": "Product must be scanned before selling"}), 400
+            # Strict check: ignore case and whitespace
+            if str(scanned_qr_code).strip().upper() != str(product.qr_code).strip().upper():
+                return jsonify({"message": "Scanned code does not match this product"}), 400
 
-        # Customer handling logic
-        customer_data = data.get('customer') # {name, phone, email, dob, address, save_profile: true/false}
+        # 4. Customer Logic
+        customer_data = data.get('customer')
         customer_db_id = None
-        
         if transaction_type == 'SALE' and customer_data and customer_data.get('phone'):
-            from models import Customer
-            # Search by phone (unique identifier for customer lookup)
-            customer_search = Customer.query.filter_by(phone=customer_data.get('phone')).first()
-            
-            if not customer_search and customer_data.get('save_profile'):
-                # Create new customer profile automatically
-                import random
-                import string
+            c_phone = customer_data.get('phone')
+            customer_obj = Customer.query.filter_by(phone=c_phone).first()
+            if not customer_obj and customer_data.get('save_profile'):
+                import random, string
                 unique_id = 'CUST-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-                customer_search = Customer(
+                customer_obj = Customer(
                     customer_id_code=unique_id,
                     name=customer_data.get('name'),
-                    phone=customer_data.get('phone'),
+                    phone=c_phone,
                     email=customer_data.get('email'),
                     dob=customer_data.get('dob'),
                     address=customer_data.get('address') or 'Not provided'
                 )
-                # Link to current shop automatically
+                db.session.add(customer_obj)
+                db.session.flush()
+            
+            if customer_obj:
+                customer_db_id = customer_obj.id
                 shop_obj = Shop.query.get(product.shop_id)
-                if shop_obj:
-                    customer_search.shops.append(shop_obj)
-                db.session.add(customer_search)
-                db.session.commit()
-                print(f"DEBUG: Auto-created customer {unique_id} during sale")
-                
-            if customer_search:
-                customer_db_id = customer_search.id
-                # Ensure linked to this shop if not already
-                shop_obj = Shop.query.get(product.shop_id)
-                if shop_obj and shop_obj not in customer_search.shops:
-                    customer_search.shops.append(shop_obj)
-                    db.session.commit()
-            
-        # Check permissions
-        if current_user['role'] not in ['shop_owner', 'admin', 'salesman']:
-             return jsonify({"message": "Unauthorized"}), 403
+                if shop_obj and shop_obj not in customer_obj.shops:
+                    customer_obj.shops.append(shop_obj)
 
-        # If salesman, verify they belong to the same shop as the product
-        if current_user['role'] == 'salesman':
-            salesman = Salesman.query.filter_by(user_id=current_user['id']).first()
-            if not salesman or salesman.shop_id != product.shop_id:
-                return jsonify({"message": "Unauthorized: You can only sell products from your registered shop"}), 403
-            # Auto-set salesman_id_code if not provided by QR scan flow (though flow usually needs it)
-            if not salesman_id_code:
-                salesman_id_code = salesman.salesman_id_code
-
-        # QR CODE SCAN VERIFICATION
-        if transaction_type == 'SALE':
-            if not scanned_qr_code:
-                return jsonify({"message": "Product must be scanned before selling"}), 400
-            if scanned_qr_code != product.qr_code:
-                return jsonify({"message": "Scanned code does not match this product!"}), 400
-
-        salesman_db_id = None
-        if transaction_type == 'SALE':
-            if not salesman_id_code:
-                return jsonify({"message": "Salesman ID is required for sale"}), 400
-            salesman_obj = Salesman.query.filter_by(salesman_id_code=salesman_id_code).first()
-            if not salesman_obj:
-                return jsonify({"message": "Invalid Salesman ID"}), 400
-            salesman_db_id = salesman_obj.id
-
-        if transaction_type == 'SALE':
-            # Deduct from specific variation if selected
-            unit_option_id = data.get('unit_option_id')
-            
-            # Use the product object directly instead of a new query if possible
-            # But we need to ensure we have the latest stock from DB
-            db.session.refresh(product)
-            
-            print(f"DEBUG: Sale Request - Product: {product.name} (ID: {product.id}), Qty: {quantity}, UnitOptionID: {unit_option_id}")
-            
-            if unit_option_id and str(unit_option_id).strip() != '':
-                from models import ProductUnitOption
-                try:
-                    uo_id = int(unit_option_id)
-                    opt = ProductUnitOption.query.get(uo_id)
-                except Exception as e:
-                    print(f"DEBUG: Variation lookup error: {e}")
-                    opt = None
-
-                if opt and opt.product_id == product.id:
-                    print(f"DEBUG: Variation {opt.id} found: {opt.unit_value} {opt.unit_type}, Current Stock: {opt.stock_quantity}")
-                    
-                    # BYPASS STOCK CHECK FOR DEBUGGING
-                    print(f"DEBUG: BYPASSING STOCK CHECK. Requested: {quantity}, Available: {opt.stock_quantity}")
-                    
-                    # Deduct ONLY from the specific variation
-                    opt.stock_quantity -= quantity
-                    
-                    # Update aggregate product stock ONLY as a summary
-                    product.stock_quantity = sum(o.stock_quantity for o in product.unit_options)
-                    
-                    db.session.add(opt)
-                    db.session.add(product)
-                    db.session.commit()
-                    print(f"DEBUG: SUCCESS - Variation {opt.id} stock updated to {opt.stock_quantity}")
-                else:
-                    msg = f"!!! ERROR: Variation {unit_option_id} not found for this product !!!"
-                    print(f"DEBUG: {msg}")
-                    return jsonify({"message": msg}), 400
-            else:
-                # BYPASS STOCK CHECK FOR DEBUGGING
-                print(f"DEBUG: BYPASSING MAIN STOCK CHECK. Requested: {quantity}, Available: {product.stock_quantity}")
-                product.stock_quantity -= quantity
-                db.session.commit()
-        elif transaction_type == 'RESTOCK':
-            product.stock_quantity += quantity
-            # Un-archive if it was archived/expired
-            product.is_archived = False
-            
-            # CLEANUP: Remove from ExpiredProduct table if it exists
-            ExpiredProduct.query.filter_by(product_id=product.id, shop_id=product.shop_id).delete()
-        
-        # Calculate Unit Price (Apply Discount if Expiring Soon)
+        # 5. Stock Deduction & Pricing
         unit_price = product.selling_price
         unit_type = None
         unit_value = None
         
-        # Check for selected unit option
-        unit_option_id = data.get('unit_option_id')
-        if unit_option_id:
-            from models import ProductUnitOption
-            opt = ProductUnitOption.query.get(unit_option_id)
-            if opt and opt.product_id == product.id:
-                unit_price = opt.selling_price
-                unit_type = opt.unit_type
-                unit_value = opt.unit_value
+        if transaction_type == 'SALE':
+            if unit_option_id:
+                opt = ProductUnitOption.query.get(unit_option_id)
+                if opt and opt.product_id == product.id:
+                    if opt.stock_quantity < quantity:
+                        return jsonify({"message": f"Insufficient stock ({opt.stock_quantity} available)"}), 400
+                    opt.stock_quantity -= quantity
+                    unit_price = opt.selling_price
+                    unit_type = opt.unit_type
+                    unit_value = opt.unit_value
+                    db.session.flush()
+                    product.stock_quantity = sum(o.stock_quantity for o in product.unit_options)
+                else:
+                    return jsonify({"message": "Invalid variation selected"}), 400
+            else:
+                if product.stock_quantity < quantity:
+                    return jsonify({"message": f"Insufficient stock ({product.stock_quantity} available)"}), 400
+                product.stock_quantity -= quantity
+        else: # RESTOCK
+            product.stock_quantity += quantity
+            product.is_archived = False
+            ExpiredProduct.query.filter_by(product_id=product.id).delete()
 
-        is_birthday_sale = data.get('is_birthday_sale', False)
-        birthday_discount_percent = float(data.get('birthday_discount_percent') or 0)
-        discount_amount = 0.0
+        # 6. Discounts (Birthday / Expiry)
+        is_birthday_sale = bool(data.get('is_birthday_sale'))
+        birthday_disc_pct = float(data.get('birthday_discount_percent') or 0)
+        final_discount = 0.0
 
         if transaction_type == 'SALE':
-            # 1. Apply Birthday Discount first if applicable
-            if is_birthday_sale and birthday_discount_percent > 0:
-                discount_amount = (unit_price * birthday_discount_percent) / 100.0
-                unit_price -= discount_amount
-                
-                # Mark birthday offer as used if code provided
+            if is_birthday_sale and birthday_disc_pct > 0:
+                final_discount = (unit_price * birthday_disc_pct) / 100.0
+                unit_price -= final_discount
                 offer_code = data.get('birthday_offer_code')
                 if offer_code:
-                    from models import BirthdayOffer
-                    offer = BirthdayOffer.query.filter_by(offer_code=offer_code).first()
-                    if offer:
-                        offer.is_used = True
-            
-            # 2. Apply Expiry Discount if not already discounted by birthday (or combine? usually pick best)
+                    off = BirthdayOffer.query.filter_by(offer_code=offer_code).first()
+                    if off: off.is_used = True
             elif product.expiry_date:
-                days_to_expiry = (product.expiry_date - datetime.now().date()).days
-                if 0 <= days_to_expiry <= 7:
-                    expiry_discount = unit_price * 0.2 # 20% Discount on selected unit price
-                    unit_price -= expiry_discount
-                    discount_amount += expiry_discount
-                
-        # Calculate Incentive if it's a sale
-        incentive_amount = 0.0
-        if transaction_type == 'SALE' and salesman_db_id:
-            salesman_incentive = Salesman.query.get(salesman_db_id)
-            if salesman_incentive:
-                total_sale_value = unit_price * quantity
-                incentive_amount = (total_sale_value * salesman_incentive.incentive_rate) / 100.0
+                days = (product.expiry_date - datetime.now().date()).days
+                if 0 <= days <= 7:
+                    expiry_disc = unit_price * 0.2
+                    unit_price -= expiry_disc
+                    final_discount = expiry_disc
 
-        # Create Transaction Record
-        new_trans = Transaction(
-            product_id=product.id,
+        # 7. Finalize Transaction
+        salesman_obj = Salesman.query.filter_by(salesman_id_code=salesman_id_code).first()
+        salesman_db_id = salesman_obj.id if salesman_obj else None
+        incentive = 0.0
+        if transaction_type == 'SALE' and salesman_obj:
+            incentive = ((unit_price * quantity) * salesman_obj.incentive_rate) / 100.0
+
+        new_tx = Transaction(
             shop_id=product.shop_id,
+            product_id=product.id,
             transaction_type=transaction_type,
             quantity=quantity,
             unit_price=float(unit_price),
             salesman_id=salesman_db_id,
             customer_id=customer_db_id,
-            incentive_amount=float(incentive_amount),
+            incentive_amount=float(incentive),
             is_birthday_sale=is_birthday_sale,
-            discount_amount=float(discount_amount * quantity),
+            discount_amount=float(final_discount * quantity),
             unit_type=unit_type,
             unit_value=unit_value
         )
-        db.session.add(new_trans)
         
-        # Award Loyalty Points if customer exists (e.g. 1 point per 100 INR)
         if transaction_type == 'SALE' and customer_db_id:
-            from models import Customer
             customer_obj = Customer.query.get(customer_db_id)
             if customer_obj:
-                points = int((unit_price * quantity) / 100)
-                customer_obj.loyalty_points = (customer_obj.loyalty_points or 0) + points
-        
+                customer_obj.loyalty_points = (customer_obj.loyalty_points or 0) + int((unit_price * quantity) / 100)
+
+        db.session.add(new_tx)
         db.session.commit()
+        return jsonify({"message": "Success", "id": new_tx.id}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"message": f"Server Error: {str(e)}"}), 500
         
         # Check for Low Stock (Post-Commit)
         try:
