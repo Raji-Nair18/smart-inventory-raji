@@ -993,6 +993,8 @@ def list_shop_requests():
                 "unit_price": q.unit_price,
                 "discount_percent": q.discount_percent,
                 "total": q.total,
+                "gst_amount": q.gst_amount,
+                "grand_total": q.grand_total,
                 "status": q.status,
                 "is_provisional": q.status == 'Provisional',
                 "created_at": q.created_at.strftime('%Y-%m-%d %H:%M:%S')

@@ -655,33 +655,6 @@ const ShopDashboard = () => {
     } catch (e) { console.error("DEBUG: fetchDailyFor error:", e); }
   };
 
-  const fetchBills = async () => {
-    try {
-      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/billing/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-      if (res.ok) setBills(await res.json());
-    } catch (e) {}
-  };
-
-  const fetchAnalytics = async () => {
-      try {
-          const res1 = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/analytics/demand', { headers: { 'Authorization': `Bearer ${token}` } });
-          if (res1.ok) setDemand(await res1.json());
-          
-          const res2 = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/analytics/market-basket', { headers: { 'Authorization': `Bearer ${token}` } });
-          if (res2.ok) setRules(await res2.json());
-          
-          const res3 = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/inventory/analytics/sales', { headers: { 'Authorization': `Bearer ${token}` } });
-          if (res3.ok) {
-              const data = await res3.json();
-              setChartData({
-                  labels: data.map(d => d.date),
-                  revenue: data.map(d => d.revenue),
-                  profit: data.map(d => d.profit)
-              });
-          }
-      } catch (e) { console.error("DEBUG: fetchAnalytics error:", e); }
-  };
-
   const handleSale = async (id) => {
       const quantity = saleQuantities[id] || 1;
       try {
