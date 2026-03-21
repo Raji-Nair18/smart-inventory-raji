@@ -1057,55 +1057,44 @@ def force_db_sync():
 def accept_quote(quote_id):
     try:
         current_user = get_jwt_identity()
-        print(f"DEBUG: accept_quote called by user {current_user['id']} for quote {quote_id}")
+        print(f"DEBUG: accept_quote called for quote {quote_id}")
         
         shop_id = get_shop_id_for_user(current_user)
         if not shop_id:
-            return jsonify({"message": "Shop not found for this user. Please ensure you have registered a shop profile."}), 404
-            
-        shop = Shop.query.get(shop_id)
-        if not shop:
-            return jsonify({"message": f"Shop ID {shop_id} not found in database"}), 404
+            return jsonify({"message": "Shop not found"}), 404
             
         q = SupplierQuote.query.get(quote_id)
         if not q:
             return jsonify({"message": f"Quote #{quote_id} not found"}), 404
             
-        if q.shop_id != shop.id:
-            return jsonify({"message": "Unauthorized: This quote belongs to another shop"}), 403
+        if q.shop_id != shop_id:
+            return jsonify({"message": "Unauthorized"}), 403
             
         req = SupplyRequest.query.get(q.supply_request_id)
         if not req:
-            return jsonify({"message": "Original restock request not found"}), 404
-            
-        if req.shop_id != shop.id:
-            return jsonify({"message": "Unauthorized: This request belongs to another shop"}), 403
+            return jsonify({"message": "Request not found"}), 404
         
-        # 1. Mark other quotes for this request as Rejected
-        try:
-            other_quotes = SupplierQuote.query.filter(
-                SupplierQuote.supply_request_id == req.id,
-                SupplierQuote.id != q.id
-            ).all()
-            for oq in other_quotes:
-                oq.status = 'Rejected'
-        except Exception as e:
-            print(f"DEBUG: Error rejecting other quotes: {e}")
+        # 1. Reject others
+        SupplierQuote.query.filter(
+            SupplierQuote.supply_request_id == req.id,
+            SupplierQuote.id != q.id
+        ).update({"status": "Rejected"})
 
-        # 2. Accept this quote
+        # 2. Accept this
         q.status = 'Accepted'
         req.supplier_id = q.supplier_id
         req.status = 'Awaiting Payment'
         
         # 3. Create bill
+        from models.billing import SupplierBill
         bill = SupplierBill(
-            shop_id=shop.id,
+            shop_id=shop_id,
             supplier_id=q.supplier_id,
             product_id=q.product_id,
             supply_request_id=q.supply_request_id,
             quantity=req.quantity_needed,
-            unit_type=req.unit_type,
-            unit_value=req.unit_value,
+            unit_type=getattr(req, 'unit_type', 'units'),
+            unit_value=getattr(req, 'unit_value', 1.0),
             unit_price=q.unit_price,
             discount_percent=q.discount_percent,
             total=q.total,
@@ -1115,40 +1104,27 @@ def accept_quote(quote_id):
         )
         db.session.add(bill)
         
-        # 4. Notifications (Wrapped in try/except to prevent total failure)
-        owner = User.query.get(shop.owner_id)
-        supplier_obj = Supplier.query.get(q.supplier_id)
-        supplier_name = supplier_obj.company_name if supplier_obj else "Supplier"
-        
-        try:
-            if owner and owner.email:
-                subject = f"Restock Quote Accepted - Payment Required for {req.product.name}"
-                content = f"You have accepted a quote from {supplier_name}.\n\n" \
-                          f"Order Details:\n" \
-                          f"Product: {req.product.name}\n" \
-                          f"Quantity: {req.quantity_needed}\n" \
-                          f"Total (Excl. GST): ₹{q.total:.2f}\n" \
-                          f"GST (18%): ₹{q.gst_amount:.2f}\n" \
-                          f"Grand Total: ₹{q.grand_total:.2f}\n\n" \
-                          f"Please login and complete the payment to proceed with the restock."
-                send_email(owner.email, subject, content)
-
-            if supplier_obj and supplier_obj.user and supplier_obj.user.email:
-                subject = f"Your Quote for {req.product.name} was Accepted!"
-                content = f"Congratulations! Your quote for {req.product.name} has been accepted by {shop.name}.\n\n" \
-                           f"Order Details:\n" \
-                           f"Shop: {shop.name}\n" \
-                           f"Product: {req.product.name}\n" \
-                           f"Quantity: {req.quantity_needed}\n" \
-                           f"Total (Excl. GST): ₹{q.total:.2f}\n" \
-                           f"GST (18%): ₹{q.gst_amount:.2f}\n" \
-                           f"Grand Total: ₹{q.grand_total:.2f}\n\n" \
-                           f"You will be notified once the payment is completed so you can ship the order."
-                send_email(supplier_obj.user.email, subject, content)
-        except Exception as notify_err:
-            print(f"DEBUG: Non-critical notification failure: {notify_err}")
-
+        # 4. Commit early to ensure DB is updated even if email fails
         db.session.commit()
+        print(f"DEBUG: Bill created successfully for quote {quote_id}")
+
+        # 5. Async notifications (Simplified for speed)
+        try:
+            from services.notification_service import send_email
+            from models import Shop, User, Supplier
+            shop = Shop.query.get(shop_id)
+            owner = User.query.get(shop.owner_id)
+            if owner and owner.email:
+                send_email(owner.email, "Quote Accepted", f"You accepted a quote for {req.product.name}")
+        except Exception as e:
+            print(f"DEBUG: Notification skipped: {e}")
+
+        return jsonify({"message": "Quote accepted successfully", "bill_id": bill.id}), 200
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"message": f"Server Error: {str(e)}"}), 500
         print(f"DEBUG: Quote {q.id} accepted. Bill {bill.id} generated.")
         return jsonify({"message": "Quote accepted and bill generated", "bill_id": bill.id}), 200
         

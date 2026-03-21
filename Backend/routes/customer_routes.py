@@ -382,22 +382,42 @@ def notify_discount():
 def get_shop_products(shop_id):
     try:
         print(f"DEBUG: get_shop_products called for shop_id: {shop_id}")
-        # products = Product.query.filter_by(shop_id=shop_id, is_archived=False).all()
-        # Using broader filter for SQLite compatibility
-        products = Product.query.filter(
-            Product.shop_id == shop_id,
-            (Product.is_archived == False) | (Product.is_archived == 0) | (Product.is_archived == None)
-        ).all()
         
+        # Check if shop exists
+        from models import Shop
+        shop = Shop.query.get(shop_id)
+        if not shop:
+            return jsonify({"message": f"Shop with ID {shop_id} not found"}), 404
+
+        # Using sqlalchemy.inspect to check for column existence safely
+        from sqlalchemy import inspect
+        mapper = inspect(Product)
+        has_archived = "is_archived" in mapper.attrs
+        
+        query = Product.query.filter(Product.shop_id == shop_id)
+        if has_archived:
+            query = query.filter((Product.is_archived == False) | (Product.is_archived == 0) | (Product.is_archived == None))
+        
+        products = query.all()
         print(f"DEBUG: Found {len(products)} products for shop {shop_id}")
         
         result = []
         for p in products:
             try:
-                unit_options = []
+                # Basic product data
+                p_data = {
+                    "id": p.id,
+                    "name": p.name,
+                    "category": p.category,
+                    "price": p.selling_price if hasattr(p, 'selling_price') else 0.0,
+                    "stock": p.stock_quantity if hasattr(p, 'stock_quantity') else 0,
+                    "unit_options": []
+                }
+                
+                # Unit options
                 if hasattr(p, 'unit_options') and p.unit_options:
                     for opt in p.unit_options:
-                        unit_options.append({
+                        p_data["unit_options"].append({
                             "id": opt.id,
                             "unit_type": opt.unit_type,
                             "unit_value": opt.unit_value,
@@ -405,23 +425,16 @@ def get_shop_products(shop_id):
                             "stock_quantity": opt.stock_quantity
                         })
                 
-                result.append({
-                    "id": p.id,
-                    "name": p.name,
-                    "category": p.category,
-                    "price": p.selling_price,
-                    "stock": p.stock_quantity,
-                    "unit_options": unit_options
-                })
+                result.append(p_data)
             except Exception as item_err:
-                print(f"DEBUG: Skipping broken product {p.id}: {item_err}")
+                print(f"DEBUG: Skipping broken product ID {getattr(p, 'id', 'unknown')}: {item_err}")
                 continue
                 
         return jsonify(result), 200
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"message": f"Error loading products: {str(e)}"}), 500
+        return jsonify({"message": f"Server Error loading products: {str(e)}"}), 500
 
 @customer_bp.route('/monthly-ration', methods=['GET'])
 @jwt_required()

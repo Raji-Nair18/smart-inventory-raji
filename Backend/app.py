@@ -23,39 +23,31 @@ def create_app():
     db.init_app(app)
     Migrate(app, db)
     
-    # RE-ENABLED flask-cors WITH EXPLICIT CONFIGURATION
+    # SIMPLIFIED CORS FOR MAXIMUM RELIABILITY
     from flask_cors import CORS
-    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
+    CORS(app, resources={r"/*": {"origins": "*"}})
     
-    @app.before_request
-    def handle_preflight():
-        from flask import request, make_response
-        if request.method == "OPTIONS":
-            response = make_response()
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
-            response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
-            response.headers['Access-Control-Max-Age'] = '86400'
-            return response
-        # Removed print to reduce log noise, keep only for real errors
-        # print(f"DEBUG: Request: {request.method} {request.url}")
-
     @app.after_request
     def add_cors_headers(response):
-        # Guarantee headers are set on every outgoing response to avoid CORS blocks on errors
-        response.headers['Access-Control-Allow-Origin'] = '*'
+        # Only add headers if they aren't already there to avoid duplicates
+        if 'Access-Control-Allow-Origin' not in response.headers:
+            response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
     # Global error handler to ensure CORS headers are sent even on 500 errors
     @app.errorhandler(Exception)
     def handle_exception(e):
         from flask import jsonify, request
-        print(f"ERROR: Backend crash on {request.method} {request.url}: {str(e)}")
-        response = jsonify({"message": f"Backend Error: {str(e)}"})
+        import traceback
+        print(f"ERROR: Backend crash on {request.method} {request.url}")
+        traceback.print_exc()
+        
+        response = jsonify({
+            "message": f"Backend Error: {str(e)}",
+            "type": e.__class__.__name__
+        })
         response.status_code = 500
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
-        response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
         return response
 
     # Remove flask-cors middleware and rely on manual handlers above
