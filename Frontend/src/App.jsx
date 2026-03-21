@@ -7,6 +7,9 @@ import SupplierDashboard from './dashboard/SupplierDashboard';
 import CustomerDashboard from './dashboard/CustomerDashboard';
 
 const App = () => {
+  const role = localStorage.getItem('role');
+  const token = localStorage.getItem('token');
+
   return (
     <Router>
       <Routes>
@@ -19,7 +22,13 @@ const App = () => {
         <Route path="/dashboard/supplier" element={<SupplierDashboard />} />
         <Route path="/dashboard/customer" element={<CustomerDashboard />} />
         
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={token ? (
+          role === 'admin' ? <Navigate to="/dashboard/admin" /> :
+          role === 'shop_owner' || role === 'salesman' ? <Navigate to="/dashboard/shop" /> :
+          role === 'supplier' ? <Navigate to="/dashboard/supplier" /> :
+          role === 'customer' ? <Navigate to="/dashboard/customer" /> :
+          <Login />
+        ) : <Login />} />
       </Routes>
     </Router>
   );
