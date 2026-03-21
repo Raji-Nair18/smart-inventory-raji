@@ -409,13 +409,21 @@ const ShopDashboard = () => {
       try {
           const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/supplier/linked-for-shop', { headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) setLinkedSuppliers(await res.json());
-      } catch (e) {}
+      } catch (e) { console.error("DEBUG: fetchLinkedSuppliers error:", e); }
   };
   const fetchRequests = async () => {
       try {
           const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/inventory/requests', { headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) setRequests(await res.json());
-      } catch (e) {}
+      } catch (e) { console.error("DEBUG: fetchRequests error:", e); }
+  };
+  const fetchBills = async () => {
+    try {
+      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/billing/shop', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setBills(await res.json());
+    } catch (e) { console.error("DEBUG: fetchBills error:", e); }
   };
   const acceptQuote = async (quoteId) => {
       if (!quoteId) {
@@ -609,14 +617,14 @@ const ShopDashboard = () => {
     try {
       const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/analytics/weather?city=New York');
       if (res.ok) setWeather(await res.json());
-    } catch (e) {}
+    } catch (e) { console.error("DEBUG: fetchWeather error:", e); }
   };
 
   const fetchExpired = async () => {
     try {
       const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/inventory/expired', { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) setExpired(await res.json());
-    } catch (e) {}
+    } catch (e) { console.error("DEBUG: fetchExpired error:", e); }
   };
   const viewExpiredSales = async (expiredId) => {
     try {
@@ -636,7 +644,7 @@ const ShopDashboard = () => {
     try {
       const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/inventory/sales/summary', { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) setSalesSummary(await res.json());
-    } catch (e) {}
+    } catch (e) { console.error("DEBUG: fetchSalesSummary error:", e); }
   };
 
   const fetchDailyFor = async (productId, name) => {
@@ -644,7 +652,7 @@ const ShopDashboard = () => {
       setDailyForProduct({ product_id: productId, name });
       const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/sales/daily?product_id=${productId}`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) setDailySales(await res.json());
-    } catch (e) {}
+    } catch (e) { console.error("DEBUG: fetchDailyFor error:", e); }
   };
 
   const fetchBills = async () => {
@@ -671,7 +679,7 @@ const ShopDashboard = () => {
                   profit: data.map(d => d.profit)
               });
           }
-      } catch (e) {}
+      } catch (e) { console.error("DEBUG: fetchAnalytics error:", e); }
   };
 
   const handleSale = async (id) => {
