@@ -22,8 +22,14 @@ def create_app():
     db.init_app(app)
     Migrate(app, db)
     
-    # MOST PERMISSIVE CORS FOR PRODUCTION
-    CORS(app)
+    # PERMISSIVE CORS FOR ALL ENVIRONMENTS
+    CORS(app, resources={
+        r"/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+        }
+    })
     
     JWTManager(app)
     

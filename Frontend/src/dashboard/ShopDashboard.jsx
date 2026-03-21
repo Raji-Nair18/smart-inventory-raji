@@ -53,6 +53,12 @@ const ShopDashboard = () => {
   });
   const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
 
+  const badgeForQty = (q) => {
+    if (q < 6) return { label: 'Least', cls: 'bg-red-100 text-red-800' };
+    if (q >= 20) return { label: 'Most Sold', cls: 'bg-green-100 text-green-800' };
+    return { label: 'Moderate', cls: 'bg-yellow-100 text-yellow-800' };
+    };
+
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
 
@@ -417,14 +423,14 @@ const ShopDashboard = () => {
           if (res.ok) setRequests(await res.json());
       } catch (e) { console.error("DEBUG: fetchRequests error:", e); }
   };
-  const fetchBills = async () => {
-    try {
-      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/billing/shop', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) setBills(await res.json());
-    } catch (e) { console.error("DEBUG: fetchBills error:", e); }
-  };
+  // const fetchBills = async () => {
+  //   try {
+  //     const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/billing/shop', {
+  //       headers: { 'Authorization': `Bearer ${token}` }
+  //     });
+  //     if (res.ok) setBills(await res.json());
+  //   } catch (e) { console.error("DEBUG: fetchBills error:", e); }
+  // };
   const acceptQuote = async (quoteId) => {
       if (!quoteId) {
           alert("Invalid Quote ID");
@@ -653,6 +659,33 @@ const ShopDashboard = () => {
       const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/sales/daily?product_id=${productId}`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) setDailySales(await res.json());
     } catch (e) { console.error("DEBUG: fetchDailyFor error:", e); }
+  };
+
+  const fetchBills = async () => {
+    try {
+      const res = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/billing/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setBills(await res.json());
+    } catch (e) {}
+  };
+
+  const fetchAnalytics = async () => {
+      try {
+          const res1 = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/analytics/demand', { headers: { 'Authorization': `Bearer ${token}` } });
+          if (res1.ok) setDemand(await res1.json());
+          
+          const res2 = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/analytics/market-basket', { headers: { 'Authorization': `Bearer ${token}` } });
+          if (res2.ok) setRules(await res2.json());
+          
+          const res3 = await fetch('https://smart-inventory-backend-pa1g.onrender.com/api/inventory/analytics/sales', { headers: { 'Authorization': `Bearer ${token}` } });
+          if (res3.ok) {
+              const data = await res3.json();
+              setChartData({
+                  labels: data.map(d => d.date),
+                  revenue: data.map(d => d.revenue),
+                  profit: data.map(d => d.profit)
+              });
+          }
+      } catch (e) { console.error("DEBUG: fetchAnalytics error:", e); }
   };
 
   const handleSale = async (id) => {
@@ -1396,7 +1429,7 @@ const ShopDashboard = () => {
                           <tr key={record.id || Math.random()} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{String(record.date || 'N/A')}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">{record.product_name || 'Unknown'}</div>
+                            <div className="text-sm font-medium text-gray-900">{record.product_name}</div>
                             {record.unit_type && (
                               <div className="text-[10px] text-indigo-500 font-bold uppercase">{record.unit_value} {record.unit_type} pack</div>
                             )}
@@ -1404,18 +1437,10 @@ const ShopDashboard = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">#{record.product_id || '?'}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.quantity || 0}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-medium">{record.customer_name || '-'}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-medium">{record.salesman || 'System'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-medium">{record.salesman}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {record.historical_badge && (
-                              <span className={`px-3 py-1 inline-flex text-xs font-semibold rounded-full ${
-                                record.historical_badge === 'Most Sold' ? 'bg-green-100 text-green-800' :
-                                record.historical_badge === 'Moderately Sold' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {record.historical_badge}
-                              </span>
-                            )}
-                            {record.is_birthday_sale === true && (
+                            {(() => { const b = badgeForQty(record.quantity); return <span className={`px-3 py-1 inline-flex text-xs font-semibold rounded-full ${b.cls}`}>{b.label}</span>; })()}
+                            {record.is_birthday_sale && (
                               <span className="ml-2 px-3 py-1 inline-flex text-xs font-bold rounded-full bg-purple-100 text-purple-800 animate-pulse border border-purple-200">
                                 🎂 Birthday Discount
                               </span>
@@ -1424,7 +1449,7 @@ const ShopDashboard = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">₹{Number(record.total_price || 0).toLocaleString('en-IN')}</td>
                           </tr>
                       ))}
-                      {(!Array.isArray(history) || history.length === 0) && (
+                      {history.length === 0 && (
                         <tr>
                           <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
                             <FaHistory className="mx-auto text-4xl mb-4 opacity-20" />
@@ -2073,146 +2098,121 @@ const ShopDashboard = () => {
           {/* SALESMEN / SALARY TAB */}
           {activeTab === 'salesmen' && (
             <div className="space-y-8">
-              {role === 'salesman' ? (
-                salesmanProfile ? (
-                  <div className="max-w-4xl mx-auto space-y-6">
-                    {/* Salary Summary Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <StatCard 
-                        title="Today's Sales" 
-                        value={`${salesmanProfile.daily_sales_qty || 0} Items`} 
-                        icon={FaShoppingCart} 
-                        color="bg-blue-500" 
-                      />
-                      <StatCard 
-                        title="Monthly Incentives" 
-                        value={`₹${(salesmanProfile.incentives || 0)}`} 
-                        icon={FaMoneyBillWave} 
-                        color="bg-green-500" 
-                      />
-                      <StatCard 
-                        title="Estimated Monthly Salary" 
-                        value={`₹${(salesmanProfile.estimated_salary || 0)}`} 
-                        icon={FaChartLine} 
-                        color="bg-indigo-600"
-                        subtext="Base 15,000 + Monthly Incentives"
-                      />
-                    </div>
+              {role === 'salesman' && salesmanProfile && (
+                <div className="max-w-4xl mx-auto space-y-6">
+                  {/* Salary Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <StatCard 
+                      title="Today's Sales" 
+                      value={`${salesmanProfile.daily_sales_qty} Items`} 
+                      icon={FaShoppingCart} 
+                      color="bg-blue-500" 
+                    />
+                    <StatCard 
+                      title="Total Incentives" 
+                      value={`₹${salesmanProfile.incentives.toLocaleString('en-IN')}`} 
+                      icon={FaMoneyBillWave} 
+                      color="bg-green-500" 
+                    />
+                    <StatCard 
+                      title="Estimated Salary" 
+                      value={`₹${salesmanProfile.estimated_salary.toLocaleString('en-IN')}`} 
+                      icon={FaChartLine} 
+                      color="bg-indigo-600"
+                      subtext="Base 500 + Incentives"
+                    />
+                  </div>
 
-                    {/* Profile Details */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                      <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center">
-                        <FaUsers className="mr-2 text-indigo-600" />
-                        My Registration Details
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-4">
-                          <div className="flex flex-col p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                            <span className="text-xs text-indigo-400 uppercase font-bold mb-1">Automated Unique ID</span>
-                            <span className="text-2xl font-mono font-black text-indigo-700">{salesmanProfile.salesman_id_code || 'N/A'}</span>
-                          </div>
-                          <div className="flex flex-col pt-2">
-                            <span className="text-xs text-gray-400 uppercase font-bold">Full Name</span>
-                            <span className="text-lg font-medium text-gray-800">{salesmanProfile.name || 'N/A'}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs text-gray-400 uppercase font-bold">Gender</span>
-                            <span className="text-lg text-gray-700">{salesmanProfile.gender || 'Not specified'}</span>
-                          </div>
+                  {/* Profile Details */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+                    <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center">
+                      <FaUsers className="mr-2 text-indigo-600" />
+                      My Registration Details
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-4">
+                        <div className="flex flex-col p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                          <span className="text-xs text-indigo-400 uppercase font-bold mb-1">Automated Unique ID</span>
+                          <span className="text-2xl font-mono font-black text-indigo-700">{salesmanProfile.salesman_id_code}</span>
                         </div>
-                        <div className="space-y-4">
-                          <div className="flex flex-col">
-                            <span className="text-xs text-gray-400 uppercase font-bold">Contact Number</span>
-                            <span className="text-lg text-gray-700">{salesmanProfile.phone || 'N/A'}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs text-gray-400 uppercase font-bold">Mail ID</span>
-                            <span className="text-lg text-gray-700">{salesmanProfile.email || 'Not provided'}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs text-gray-400 uppercase font-bold">Bank Account Number</span>
-                            <span className="text-lg font-mono text-gray-700">{salesmanProfile.account_number || 'Not provided'}</span>
-                          </div>
+                        <div className="flex flex-col pt-2">
+                          <span className="text-xs text-gray-400 uppercase font-bold">Full Name</span>
+                          <span className="text-lg font-medium text-gray-800">{salesmanProfile.name}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-xs text-gray-400 uppercase font-bold">Gender</span>
+                          <span className="text-lg text-gray-700">{salesmanProfile.gender || 'Not specified'}</span>
                         </div>
                       </div>
-                      <div className="mt-8 pt-6 border-t border-gray-100">
-                        <div className="flex items-center text-sm text-gray-500">
-                          <FaStore className="mr-2" />
-                          Working at: <span className="ml-1 font-bold text-gray-800">{salesmanProfile.shop_name || 'My Store'}</span>
+                      <div className="space-y-4">
+                        <div className="flex flex-col">
+                          <span className="text-xs text-gray-400 uppercase font-bold">Contact Number</span>
+                          <span className="text-lg text-gray-700">{salesmanProfile.phone}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-xs text-gray-400 uppercase font-bold">Mail ID</span>
+                          <span className="text-lg text-gray-700">{salesmanProfile.email || 'Not provided'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-xs text-gray-400 uppercase font-bold">Bank Account Number</span>
+                          <span className="text-lg font-mono text-gray-700">{salesmanProfile.account_number || 'Not provided'}</span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Individual Sales History for Salesman */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                      <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                        <h3 className="text-lg font-bold text-gray-800 flex items-center">
-                          <FaHistory className="mr-2 text-indigo-600" />
-                          My Recent Sales
-                        </h3>
-                        <span className="text-sm text-indigo-600 font-medium">{history.length} sales found</span>
+                    <div className="mt-8 pt-6 border-t border-gray-100">
+                      <div className="flex items-center text-sm text-gray-500">
+                        <FaStore className="mr-2" />
+                        Working at: <span className="ml-1 font-bold text-gray-800">{salesmanProfile.shop_name}</span>
                       </div>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Product</th>
-                              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Qty</th>
-                              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Badge</th>
-                              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {history.slice(0, 10).map((record) => (
-                              <tr key={record.id || Math.random()} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{String(record.date || 'N/A').split(' ')[0]}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{record.product_name || 'Unknown'}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{record.quantity || 0}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  {record.historical_badge && (
-                                    <span className={`px-2 py-0.5 inline-flex text-[10px] font-bold rounded-full ${
-                                      record.historical_badge === 'Most Sold' ? 'bg-green-100 text-green-800' :
-                                      record.historical_badge === 'Moderately Sold' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }`}>
-                                      {record.historical_badge}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">₹{(record.total_price || 0)}</td>
-                              </tr>
-                            ))}
-                            {history.length === 0 && (
-                              <tr>
-                                <td colSpan="5" className="px-6 py-8 text-center text-gray-500 italic">No sales recorded yet today.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                      {history.length > 10 && (
-                        <div className="px-8 py-4 bg-gray-50 text-center border-t border-gray-100">
-                          <button onClick={() => setActiveTab('history')} className="text-sm text-indigo-600 font-bold hover:underline">View All My Sales History</button>
-                        </div>
-                      )}
                     </div>
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-                    <p className="text-gray-500 font-medium">{profileError || 'Loading your salary and profile details...'}</p>
-                    {profileError && (
-                      <button 
-                        onClick={fetchSalesmanProfile}
-                        className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors"
-                      >
-                        Try Again
-                      </button>
+
+                  {/* Individual Sales History for Salesman */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                      <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                        <FaHistory className="mr-2 text-indigo-600" />
+                        My Recent Sales
+                      </h3>
+                      <span className="text-sm text-indigo-600 font-medium">{history.length} sales found</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Product</th>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Qty</th>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {history.slice(0, 10).map((record) => (
+                            <tr key={record.id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.date.split(' ')[0]}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{record.product_name}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{record.quantity}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">₹{record.total_price.toLocaleString('en-IN')}</td>
+                            </tr>
+                          ))}
+                          {history.length === 0 && (
+                            <tr>
+                              <td colSpan="4" className="px-6 py-8 text-center text-gray-500 italic">No sales recorded yet today.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    {history.length > 10 && (
+                      <div className="px-8 py-4 bg-gray-50 text-center border-t border-gray-100">
+                        <button onClick={() => setActiveTab('history')} className="text-sm text-indigo-600 font-bold hover:underline">View All My Sales History</button>
+                      </div>
                     )}
                   </div>
-                )
-              ) : role === 'shop_owner' ? (
+                </div>
+              )}
+
+              {role === 'shop_owner' && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="text-lg font-bold text-gray-800">Salesman Performance & Details</h3>
@@ -2227,7 +2227,7 @@ const ShopDashboard = () => {
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Details</th>
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Today's Sales</th>
                           <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Incentives</th>
-                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Monthly Salary</th>
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Salary</th>
                           <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase">Action</th>
                         </tr>
                       </thead>
@@ -2243,8 +2243,8 @@ const ShopDashboard = () => {
                               <div className="italic text-[10px] mt-1">Acc: {s.account_number || 'N/A'}</div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{s.daily_sales_qty} items</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-bold">₹{(s.incentives || 0).toFixed(2)}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">₹{(s.estimated_salary || 0).toFixed(2)}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-bold">₹{s.incentives?.toFixed(2) || '0.00'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">₹{s.estimated_salary.toFixed(2)}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                               <button onClick={() => handleDeleteSalesman(s.id)} className="text-red-600 hover:text-red-800">
                                 <FaTrash />
@@ -2259,7 +2259,7 @@ const ShopDashboard = () => {
                     </table>
                   </div>
                 </div>
-              ) : null}
+              )}
             </div>
           )}
         </main>
