@@ -366,25 +366,37 @@ def assign_supplier():
     current_user = get_jwt_identity()
     if current_user['role'] != 'shop_owner':
         return jsonify({"message": "Unauthorized"}), 403
-    body = request.get_json() or {}
-    supplier_id = body.get('supplier_id')
+    
+    data = request.get_json() or {}
+    supplier_id = data.get('supplier_id')
+    
+    if not supplier_id:
+        return jsonify({"message": "Supplier ID is required"}), 400
+        
     supplier = Supplier.query.get(supplier_id)
     if not supplier:
         return jsonify({"message": "Supplier not found"}), 404
+        
     shop = Shop.query.filter_by(owner_id=current_user['id']).first()
     if not shop:
         return jsonify({"message": "Shop not found"}), 404
+        
     if supplier not in shop.suppliers:
         shop.suppliers.append(supplier)
         db.session.commit()
+        
+        # Notify supplier
         if supplier.user and supplier.user.email:
-            subject = "You have been added as a supplier"
-            content = f"{shop.name} has added you as a supplier."
             try:
-                send_email(supplier.user.email, subject, content)
-            except Exception:
-                pass
-    return jsonify({"message": "Supplier assigned to shop"}), 200
+                send_email(
+                    supplier.user.email,
+                    "New Shop Connection",
+                    f"Shop '{shop.name}' has added you as their supplier. You can now see their restock requests."
+                )
+            except Exception as e:
+                print(f"Notification error: {e}")
+                
+    return jsonify({"message": f"Supplier '{supplier.company_name}' successfully linked to your shop"}), 200
 
 @supplier_bp.route('/catalog', methods=['GET'])
 @jwt_required()
