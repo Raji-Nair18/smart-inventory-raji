@@ -31,6 +31,7 @@ def create_app():
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
         response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
+        response.headers['Access-Control-Max-Age'] = '86400'
         return response
 
     # Global error handler to ensure CORS headers are sent even on 500 errors
