@@ -23,7 +23,10 @@ def create_app():
     db.init_app(app)
     Migrate(app, db)
     
-    # MANUAL PREFLIGHT HANDLER (The "Nuclear" Option)
+    # RE-ENABLED flask-cors WITH EXPLICIT CONFIGURATION
+    from flask_cors import CORS
+    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
+    
     @app.before_request
     def handle_preflight():
         from flask import request, make_response
@@ -34,13 +37,13 @@ def create_app():
             response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
             response.headers['Access-Control-Max-Age'] = '86400'
             return response
+        # Removed print to reduce log noise, keep only for real errors
+        # print(f"DEBUG: Request: {request.method} {request.url}")
 
     @app.after_request
     def add_cors_headers(response):
-        # Guarantee headers are set on every outgoing response
+        # Guarantee headers are set on every outgoing response to avoid CORS blocks on errors
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
-        response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
         return response
 
     # Global error handler to ensure CORS headers are sent even on 500 errors

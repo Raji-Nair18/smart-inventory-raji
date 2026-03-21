@@ -380,26 +380,38 @@ def notify_discount():
 @customer_bp.route('/shop-products/<int:shop_id>', methods=['GET'])
 @jwt_required()
 def get_shop_products(shop_id):
-    # products = Product.query.filter_by(shop_id=shop_id, is_archived=False).all()
-    # Using broader filter for SQLite compatibility
-    products = Product.query.filter(
-        Product.shop_id == shop_id,
-        (Product.is_archived == False) | (Product.is_archived == 0) | (Product.is_archived == None)
-    ).all()
-    return jsonify([{
-        "id": p.id,
-        "name": p.name,
-        "category": p.category,
-        "price": p.selling_price,
-        "stock": p.stock_quantity,
-        "unit_options": [{
-            "id": opt.id,
-            "unit_type": opt.unit_type,
-            "unit_value": opt.unit_value,
-            "selling_price": opt.selling_price,
-            "stock_quantity": opt.stock_quantity
-        } for opt in p.unit_options]
-    } for p in products]), 200
+    try:
+        print(f"DEBUG: get_shop_products called for shop_id: {shop_id}")
+        # products = Product.query.filter_by(shop_id=shop_id, is_archived=False).all()
+        # Using broader filter for SQLite compatibility
+        products = Product.query.filter(
+            Product.shop_id == shop_id,
+            (Product.is_archived == False) | (Product.is_archived == 0) | (Product.is_archived == None)
+        ).all()
+        
+        print(f"DEBUG: Found {len(products)} products for shop {shop_id}")
+        
+        result = []
+        for p in products:
+            result.append({
+                "id": p.id,
+                "name": p.name,
+                "category": p.category,
+                "price": p.selling_price,
+                "stock": p.stock_quantity,
+                "unit_options": [{
+                    "id": opt.id,
+                    "unit_type": opt.unit_type,
+                    "unit_value": opt.unit_value,
+                    "selling_price": opt.selling_price,
+                    "stock_quantity": opt.stock_quantity
+                } for opt in p.unit_options]
+            })
+        return jsonify(result), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"message": f"Error loading products: {str(e)}"}), 500
 
 @customer_bp.route('/monthly-ration', methods=['GET'])
 @jwt_required()

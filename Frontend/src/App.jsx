@@ -1,4 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { API_BASE_URL } from './config';
 import Login from './auth/Login';
 import Register from './auth/Register';
 import AdminDashboard from './dashboard/AdminDashboard';
@@ -9,6 +11,11 @@ import CustomerDashboard from './dashboard/CustomerDashboard';
 const App = () => {
   const role = localStorage.getItem('role');
   const token = localStorage.getItem('token');
+
+  // Wake up the backend on app load (Render free tier cold start fix)
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/auth/shops`).catch(() => {});
+  }, []);
 
   return (
     <Router>
