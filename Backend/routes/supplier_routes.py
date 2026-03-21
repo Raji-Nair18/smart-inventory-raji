@@ -12,10 +12,28 @@ supplier_bp = Blueprint('supplier', __name__)
 def get_supply_requests():
     try:
         current_user = get_jwt_identity()
-        user_id = current_user['id']
+        user_id = current_user.get('id')
+        role = current_user.get('role')
+        
+        print(f"DEBUG: get_supply_requests called for user_id: {user_id}, role: {role}")
+        
         supplier = Supplier.query.filter_by(user_id=user_id).first()
         if not supplier:
-            return jsonify([]), 200
+            print(f"DEBUG: No supplier record found for user_id: {user_id}")
+            # Try to find by email/phone as fallback if user_id link is broken
+            from models import User
+            user = User.query.get(user_id)
+            if user:
+                supplier = Supplier.query.filter((Supplier.email == user.email) | (Supplier.phone == user.phone)).first()
+                if supplier:
+                    supplier.user_id = user.id
+                    db.session.commit()
+                    print(f"DEBUG: Found supplier by email/phone and linked to user_id: {user_id}")
+            
+            if not supplier:
+                return jsonify([]), 200
+            
+        print(f"DEBUG: Found supplier: {supplier.company_name} (ID: {supplier.id})")
             
         # Find the "Most Orders" shop for this supplier
         from sqlalchemy import func
@@ -41,6 +59,11 @@ def get_supply_requests():
         
         result = []
         for req in requests:
+            # SAFETY CHECK: If product or shop is missing, skip this request
+            if not req.product or not req.shop:
+                print(f"DEBUG: Skipping request {req.id} because product or shop is missing")
+                continue
+
             # 3. CHECK CATALOG MATCH (Flexible)
             catalog_item = find_catalog_match(supplier.id, req.product.sku, req.product.name)
             
@@ -68,10 +91,16 @@ def get_supply_requests():
             if existing_quote:
                 can_quote = False
 
+            # Determine the display status for "Your Quote"
+            my_quote_status = existing_quote.status if existing_quote else None
+            my_quote_gst = existing_quote.gst_amount if existing_quote else 0.0
+            my_quote_grand_total = existing_quote.grand_total if existing_quote else 0.0
+
             result.append({
                 "id": req.id,
                 "shop_id": req.shop_id,
                 "shop_name": req.shop.name,
+                "product_id": req.product_id,
                 "product_name": req.product.name,
                 "product_sku": req.product.sku,
                 "quantity": req.quantity_needed,
@@ -85,9 +114,9 @@ def get_supply_requests():
                 "base_price": display_base_price,
                 "can_quote": can_quote,
                 "has_quoted": existing_quote is not None,
-                "my_quote_status": existing_quote.status if existing_quote else None,
-                "my_quote_gst": existing_quote.gst_amount if existing_quote else 0.0,
-                "my_quote_grand_total": existing_quote.grand_total if existing_quote else 0.0,
+                "my_quote_status": my_quote_status,
+                "my_quote_gst": my_quote_gst,
+                "my_quote_grand_total": my_quote_grand_total,
                 "is_winner": existing_quote.status == 'Accepted' if existing_quote else False,
                 "is_top_customer": req.shop_id == top_shop_id if top_shop_id else False
             })
