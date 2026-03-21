@@ -950,7 +950,7 @@ const ShopDashboard = () => {
                           // Dynamic Stock Logic for Variation
                           const displayStock = currentUnit ? currentUnit.stock_quantity : product.stock;
                           const displayStatus = currentUnit 
-                            ? (currentUnit.stock_quantity < currentUnit.reorder_level ? 'Low Stock' : 'In Stock')
+                            ? (currentUnit.stock_quantity <= currentUnit.reorder_level ? 'Low Stock' : 'In Stock')
                             : product.status;
 
                           return (
@@ -992,7 +992,7 @@ const ShopDashboard = () => {
                               )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`font-medium ${currentUnit ? (displayStock < currentUnit.reorder_level ? 'text-red-600' : 'text-gray-900') : (displayStock < 10 ? 'text-red-600' : 'text-gray-900')}`}>{displayStock}</span>
+                            <span className={`font-medium ${currentUnit ? (displayStock <= currentUnit.reorder_level ? 'text-red-600' : 'text-gray-900') : (displayStock <= 10 ? 'text-red-600' : 'text-gray-900')}`}>{displayStock}</span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.expiry_date || '-'}</td>
                           <td className="px-6 py-4 whitespace-nowrap">

@@ -277,7 +277,7 @@ def record_transaction():
             # 1. Check for individual variation low stock (Primary logic)
             has_variations = len(product.unit_options) > 0
             for opt in product.unit_options:
-                if opt.stock_quantity < opt.reorder_level:
+                if opt.stock_quantity <= opt.reorder_level:
                     # Check for existing request for this variation specifically (via notes)
                     active_statuses = ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection', 'Awaiting Payment', 'Paid', 'Shipped']
                     existing_var_req = SupplyRequest.query.filter(
@@ -318,7 +318,7 @@ def record_transaction():
                 
                 print(f"DEBUG: Checking Stock. Product: {product.name}, Stock: {product.stock_quantity}, Reorder Lvl: {reorder_lvl}")
                 
-                if product.stock_quantity < reorder_lvl:
+                if product.stock_quantity <= reorder_lvl:
                     # Trigger Notification
                     msg = f"Alert: Product {product.name} (SKU: {product.sku}) is low on stock. Current: {product.stock_quantity}. Reorder Level: {reorder_lvl}"
                     print(f"TRIGGER NOTIFICATION: {msg}")
@@ -461,16 +461,23 @@ def get_products():
         status = "In Stock"
         discounted_price = None
         
-        # Check Expiry
+        # Status Logic: Check Variations first, then fallback to main product
+        if p.unit_options:
+            status = "In Stock"
+            for opt in p.unit_options:
+                if opt.stock_quantity <= opt.reorder_level:
+                    status = "Low Stock"
+                    break
+        else:
+            if p.stock_quantity <= p.reorder_level:
+                status = "Low Stock"
+
+        # Check Expiry (Higher priority status)
         if p.expiry_date:
             days_to_expiry = (p.expiry_date - datetime.now().date()).days
             if 0 <= days_to_expiry <= 7:
                 status = "Expiring Soon"
                 discounted_price = p.selling_price * 0.8
-            # Fully expired items are auto-archived and removed earlier
-
-        if p.stock_quantity <= p.reorder_level:
-            status = "Low Stock"
 
         result.append({
             "id": p.id,
@@ -768,7 +775,7 @@ def add_product():
 
             for opt in p.unit_options:
                 print(f"DEBUG: Checking initial stock for variation {opt.unit_value} {opt.unit_type}: Stock={opt.stock_quantity}, Reorder={opt.reorder_level}")
-                if opt.stock_quantity < opt.reorder_level:
+                if opt.stock_quantity <= opt.reorder_level:
                     # Check if request already exists to avoid duplicates
                     active_statuses = ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection', 'Awaiting Payment', 'Paid', 'Shipped']
                     existing = SupplyRequest.query.filter(
