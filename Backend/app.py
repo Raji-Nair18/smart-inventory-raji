@@ -25,8 +25,18 @@ def create_app():
     
     # SIMPLIFIED CORS FOR MAXIMUM RELIABILITY
     from flask_cors import CORS
-    CORS(app, resources={r"/*": {"origins": "*"}})
+    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
     
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            from flask import make_response
+            response = make_response()
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
+            response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
+            return response
+
     @app.after_request
     def add_cors_headers(response):
         # Guarantee headers are set on every outgoing response to avoid CORS blocks on errors
