@@ -1,3 +1,4 @@
+# Smart Inventory Backend - Render Deployment Trigger
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
