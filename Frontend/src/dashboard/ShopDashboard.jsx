@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 import { FaBox, FaChartLine, FaHistory, FaPlusCircle, FaSignOutAlt, FaCloudSun, FaExclamationTriangle, FaMoneyBillWave, FaShoppingCart, FaTrash, FaUsers, FaEnvelope, FaBell, FaUserTag, FaClipboardList, FaCheckCircle, FaStore } from 'react-icons/fa';
+import { API_BASE_URL } from '../config';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
