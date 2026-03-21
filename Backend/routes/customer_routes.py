@@ -393,20 +393,30 @@ def get_shop_products(shop_id):
         
         result = []
         for p in products:
-            result.append({
-                "id": p.id,
-                "name": p.name,
-                "category": p.category,
-                "price": p.selling_price,
-                "stock": p.stock_quantity,
-                "unit_options": [{
-                    "id": opt.id,
-                    "unit_type": opt.unit_type,
-                    "unit_value": opt.unit_value,
-                    "selling_price": opt.selling_price,
-                    "stock_quantity": opt.stock_quantity
-                } for opt in p.unit_options]
-            })
+            try:
+                unit_options = []
+                if hasattr(p, 'unit_options') and p.unit_options:
+                    for opt in p.unit_options:
+                        unit_options.append({
+                            "id": opt.id,
+                            "unit_type": opt.unit_type,
+                            "unit_value": opt.unit_value,
+                            "selling_price": opt.selling_price,
+                            "stock_quantity": opt.stock_quantity
+                        })
+                
+                result.append({
+                    "id": p.id,
+                    "name": p.name,
+                    "category": p.category,
+                    "price": p.selling_price,
+                    "stock": p.stock_quantity,
+                    "unit_options": unit_options
+                })
+            except Exception as item_err:
+                print(f"DEBUG: Skipping broken product {p.id}: {item_err}")
+                continue
+                
         return jsonify(result), 200
     except Exception as e:
         import traceback
