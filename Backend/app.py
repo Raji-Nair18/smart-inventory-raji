@@ -23,12 +23,21 @@ def create_app():
     db.init_app(app)
     Migrate(app, db)
     
-    # MOST RELIABLE CORS FOR RENDER/VERCEL
-    CORS(app, resources={r"/*": {"origins": "*"}})
-    
+    # MANUAL PREFLIGHT HANDLER (The "Nuclear" Option)
+    @app.before_request
+    def handle_preflight():
+        from flask import request, make_response
+        if request.method == "OPTIONS":
+            response = make_response()
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
+            response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
+            response.headers['Access-Control-Max-Age'] = '86400'
+            return response
+
     @app.after_request
     def add_cors_headers(response):
-        # Ensure these are always set even if flask-cors misses them
+        # Guarantee headers are set on every outgoing response
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
         response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
@@ -45,6 +54,9 @@ def create_app():
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
         response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
         return response
+
+    # Remove flask-cors middleware and rely on manual handlers above
+    # CORS(app, resources={r"/*": {"origins": "*"}})
 
     JWTManager(app)
     
