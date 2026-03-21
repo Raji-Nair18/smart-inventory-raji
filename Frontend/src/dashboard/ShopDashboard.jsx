@@ -160,7 +160,7 @@ const ShopDashboard = () => {
   const updateRationOrderStatus = async (orderId, updates) => {
     setUpdatingOrderStatus(true);
     try {
-      const res = await fetch(`/api/customers/order/${orderId}/status`, {
+      const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/customers/order/${orderId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -198,7 +198,7 @@ const ShopDashboard = () => {
   const handleDeleteSalesman = async (id) => {
     if(!window.confirm('Delete this salesman?')) return;
     try {
-        const res = await fetch(`/api/salesman/delete/${id}`, {
+        const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/salesman/delete/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -227,7 +227,7 @@ const ShopDashboard = () => {
     if (phone.length < 10) return;
     setIsSearchingCustomer(true);
     try {
-      const res = await fetch(`/api/customers/search?phone=${phone}`, {
+      const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/customers/search?phone=${phone}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -419,7 +419,7 @@ const ShopDashboard = () => {
   };
   const acceptQuote = async (quoteId) => {
       try {
-          const res = await fetch(`/api/inventory/quotes/${quoteId}/accept`, { 
+          const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/quotes/${quoteId}/accept`, { 
               method: 'POST', 
               headers: { 
                   'Authorization': `Bearer ${token}`,
@@ -456,7 +456,7 @@ const ShopDashboard = () => {
   const handleRetryRestock = async (billId) => {
       if (!window.confirm('Would you like to send the restock request again for this failed order?')) return;
       try {
-          const res = await fetch(`/api/inventory/bills/${billId}/retry-restock`, {
+          const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/bills/${billId}/retry-restock`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -481,7 +481,7 @@ const ShopDashboard = () => {
           // Simulate network delay
           await new Promise(resolve => setTimeout(resolve, 2000));
           
-          const res = await fetch(`/api/billing/pay/${selectedBill.id}`, {
+          const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/billing/pay/${selectedBill.id}`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -573,7 +573,7 @@ const ShopDashboard = () => {
   };
   const viewExpiredSales = async (expiredId) => {
     try {
-      const res = await fetch(`/api/inventory/expired/${expiredId}/sales`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/expired/${expiredId}/sales`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
         setExpiredSales({ ...expiredSales, [expiredId]: data.daily || [] });
@@ -595,7 +595,7 @@ const ShopDashboard = () => {
   const fetchDailyFor = async (productId, name) => {
     try {
       setDailyForProduct({ product_id: productId, name });
-      const res = await fetch(`/api/inventory/sales/daily?product_id=${productId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/sales/daily?product_id=${productId}`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) setDailySales(await res.json());
     } catch (e) {}
   };
@@ -658,7 +658,7 @@ const ShopDashboard = () => {
       
       try {
           // Trying POST method to avoid CORS DELETE issues
-          const res = await fetch(`/api/inventory/${id}/delete`, {
+          const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/${id}/delete`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -680,7 +680,7 @@ const ShopDashboard = () => {
       const qty = parseInt(restockQty[expiredId] || '0');
       if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
       try {
-          const res = await fetch(`/api/inventory/expired/${expiredId}/restock-email`, {
+          const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/inventory/expired/${expiredId}/restock-email`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ quantity: qty })

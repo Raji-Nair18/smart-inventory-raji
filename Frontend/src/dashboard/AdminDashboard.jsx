@@ -60,7 +60,7 @@ const AdminDashboard = () => {
     const token = getToken();
     try {
       // Using POST for delete to avoid CORS issues
-      const res = await fetch(`/api/admin/shops/${id}`, {
+      const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/admin/shops/${id}`, {
         method: 'POST', 
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -79,7 +79,7 @@ const AdminDashboard = () => {
     const token = getToken();
     try {
       // Using POST for delete
-      const res = await fetch(`/api/admin/suppliers/${id}`, {
+      const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/admin/suppliers/${id}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

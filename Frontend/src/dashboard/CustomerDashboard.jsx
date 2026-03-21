@@ -87,7 +87,7 @@ const CustomerDashboard = () => {
     setLoadingProducts(true);
     setShopProducts([]); // Clear previous products immediately
     try {
-      const res = await fetch(`/api/customers/shop-products/${shopId}`, {
+      const res = await fetch(`https://smart-inventory-backend-pa1g.onrender.com/api/customers/shop-products/${shopId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
