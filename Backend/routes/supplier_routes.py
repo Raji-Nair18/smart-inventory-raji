@@ -52,6 +52,8 @@ def get_supply_requests():
         # 2. FETCH REQUESTS
         # PERMISSIVE: Show if shop is linked OR if request is specifically assigned to this supplier
         from sqlalchemy import or_
+        print(f"DEBUG: Searching for requests with shop_id in {linked_shop_ids} OR supplier_id == {supplier.id}")
+        
         requests = SupplyRequest.query.filter(
             or_(
                 SupplyRequest.shop_id.in_(linked_shop_ids) if linked_shop_ids else False,
@@ -61,6 +63,8 @@ def get_supply_requests():
         
         # LOGGING: Verify requests filtered
         print(f"DEBUG: Found {len(requests)} total requests after filtering")
+        for r in requests:
+            print(f"  - Request ID: {r.id}, Shop ID: {r.shop_id}, Status: {r.status}, Supplier ID: {r.supplier_id}")
         
         result = []
         for req in requests:

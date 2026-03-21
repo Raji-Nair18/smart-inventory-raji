@@ -192,22 +192,30 @@ def record_transaction():
         
         # --- TRIGGER LOW STOCK CHECK AFTER COMMIT ---
         try:
-            # Refresh to get latest DB state
-            db.session.refresh(product)
+            # Re-fetch product in new session context to be safe
+            product = Product.query.get(product.id)
             print(f"DEBUG: Starting Low Stock check for {product.name} (ID: {product.id})")
+            
+            new_requests_created = []
             
             # 1. Check for individual variation low stock (Primary logic)
             has_variations = len(product.unit_options) > 0
             if has_variations:
                 for opt in product.unit_options:
-                    print(f"DEBUG: Checking variation {opt.unit_value} {opt.unit_type}: Stock={opt.stock_quantity}, Reorder={opt.reorder_level}")
-                    if opt.stock_quantity <= opt.reorder_level:
+                    # Robust defaults for reorder levels
+                    reorder_lvl = opt.reorder_level if opt.reorder_level is not None else 0
+                    restock_qty = opt.restock_quantity if opt.restock_quantity is not None else 50
+                    
+                    print(f"DEBUG: Checking variation {opt.unit_value} {opt.unit_type}: Stock={opt.stock_quantity}, Reorder={reorder_lvl}")
+                    
+                    if opt.stock_quantity <= reorder_lvl:
                         # Check for existing request for this variation specifically (via notes)
                         active_statuses = ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection', 'Awaiting Payment', 'Paid', 'Shipped']
                         existing_var_req = SupplyRequest.query.filter(
                             SupplyRequest.product_id == product.id,
                             SupplyRequest.status.in_(active_statuses),
-                            SupplyRequest.notes.like(f"%Auto-restock for {opt.unit_value} {opt.unit_type}%")
+                            SupplyRequest.unit_type == opt.unit_type,
+                            SupplyRequest.unit_value == opt.unit_value
                         ).first()
                         
                         if not existing_var_req:
@@ -221,22 +229,16 @@ def record_transaction():
                                 shop_id=product.shop_id,
                                 product_id=product.id,
                                 supplier_id=final_supplier_id,
-                                quantity_needed=opt.restock_quantity,
+                                quantity_needed=restock_qty,
                                 unit_type=opt.unit_type,
                                 unit_value=opt.unit_value,
                                 reason='Low Stock (Variation)',
-                                notes=f"Auto-restock for {opt.unit_value} {opt.unit_type} pack (Reorder Level: {opt.reorder_level}, Current Stock: {opt.stock_quantity})"
+                                notes=f"Auto-restock for {opt.unit_value} {opt.unit_type} pack (Reorder Level: {reorder_lvl}, Current Stock: {opt.stock_quantity})"
                             )
                             db.session.add(new_var_req)
-                            db.session.commit()
-                            print(f"DEBUG: Created Supply Request for variation {opt.unit_value} {opt.unit_type} (Qty: {opt.restock_quantity})")
-                            
-                            # Notify Suppliers
-                            shop_obj = Shop.query.get(product.shop_id)
-                            notify_suppliers_for_request(shop_obj, product, opt.restock_quantity, opt.unit_type, opt.unit_value)
-                        else:
-                            print(f"DEBUG: Variation request for {opt.unit_value} {opt.unit_type} already exists (ID: {existing_var_req.id})")
-
+                            new_requests_created.append((new_var_req, restock_qty, opt.unit_type, opt.unit_value))
+                            print(f"DEBUG: Queued Supply Request for variation {opt.unit_value} {opt.unit_type} (Qty: {restock_qty})")
+            
             # 2. Fallback check for overall product low stock ONLY if no variations exist
             else:
                 reorder_lvl = product.reorder_level if product.reorder_level is not None else 20
@@ -267,19 +269,22 @@ def record_transaction():
                             reason='Low Stock'
                         )
                         db.session.add(new_req)
-                        db.session.commit()
-                        print(f"DEBUG: Created Supply Request ID {new_req.id} for {product.name} (Qty: {restock_quantity})")
-                        
-                        # Notify Suppliers
-                        shop_obj = Shop.query.get(product.shop_id)
-                        notify_suppliers_for_request(shop_obj, product, restock_quantity)
+                        new_requests_created.append((new_req, restock_quantity, None, None))
+                        print(f"DEBUG: Queued Supply Request ID for {product.name} (Qty: {restock_quantity})")
+            
+            # Commit all new requests
+            if new_requests_created:
+                db.session.commit()
+                shop_obj = Shop.query.get(product.shop_id)
+                for req_obj, qty, u_type, u_val in new_requests_created:
+                    notify_suppliers_for_request(shop_obj, product, qty, u_type, u_val)
 
         except Exception as low_stock_err:
-            import traceback
-            print(f"ERROR in low stock check: {low_stock_err}")
-            traceback.print_exc()
+             import traceback
+             print(f"ERROR in low stock check: {low_stock_err}")
+             traceback.print_exc()
 
-        return jsonify({"message": "Success", "id": new_tx.id}), 201
+         return jsonify({"message": "Success", "id": new_tx.id}), 201
 
     except Exception as e:
         db.session.rollback()
