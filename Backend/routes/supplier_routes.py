@@ -47,40 +47,57 @@ def get_supply_requests():
             
         # 1. GET LINKED SHOPS
         linked_shop_ids = [shop.id for shop in supplier.shops]
-        if not linked_shop_ids:
-            return jsonify([]), 200
+        print(f"DEBUG: Supplier {supplier.id} linked to shop IDs: {linked_shop_ids}")
             
-        # 2. FETCH ONLY REQUESTS FROM THESE SHOPS
-        # Filter strictly by shop_id to avoid showing requests from unlinked shops
-        requests = SupplyRequest.query.filter(SupplyRequest.shop_id.in_(linked_shop_ids)).all()
+        # 2. FETCH REQUESTS
+        # PERMISSIVE: Show if shop is linked OR if request is specifically assigned to this supplier
+        from sqlalchemy import or_
+        requests = SupplyRequest.query.filter(
+            or_(
+                SupplyRequest.shop_id.in_(linked_shop_ids) if linked_shop_ids else False,
+                SupplyRequest.supplier_id == supplier.id
+            )
+        ).all()
         
         # LOGGING: Verify requests filtered
-        print(f"DEBUG: Found {len(requests)} total requests for linked shops {linked_shop_ids}")
+        print(f"DEBUG: Found {len(requests)} total requests after filtering")
         
         result = []
         for req in requests:
-            # SAFETY CHECK: If product or shop is missing, skip this request
-            if not req.product or not req.shop:
-                print(f"DEBUG: Skipping request {req.id} because product or shop is missing")
-                continue
+            # DEFENSIVE ACCESS: If product or shop is missing, use placeholders instead of skipping
+            # This ensures the supplier still sees the request even if the data is slightly broken
+            p_name = "Unknown Product"
+            p_sku = "N/A"
+            s_name = "Unknown Shop"
+            
+            if req.product:
+                p_name = req.product.name
+                p_sku = req.product.sku
+            else:
+                print(f"DEBUG: Request {req.id} has missing product (ID: {req.product_id})")
+                
+            if req.shop:
+                s_name = req.shop.name
+            else:
+                print(f"DEBUG: Request {req.id} has missing shop (ID: {req.shop_id})")
 
             # 3. CHECK CATALOG MATCH (Flexible)
-            catalog_item = find_catalog_match(supplier.id, req.product.sku, req.product.name)
+            # Only attempt match if product exists
+            in_catalog = False
+            display_base_price = 0.0
+            
+            if req.product:
+                catalog_item = find_catalog_match(supplier.id, p_sku, p_name)
+                if catalog_item:
+                    in_catalog = True
+                    display_base_price = catalog_item.base_price
+                    if req.unit_type and req.unit_value:
+                        variation_match = next((v for v in catalog_item.variations 
+                                              if v.unit_type == req.unit_type and v.unit_value == req.unit_value), None)
+                        if variation_match:
+                            display_base_price = variation_match.base_price
             
             can_quote = req.status in ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection']
-            
-            # VARIATION PRICE MATCHING for display
-            display_base_price = 0.0
-            in_catalog = False
-            
-            if catalog_item:
-                in_catalog = True
-                display_base_price = catalog_item.base_price
-                if req.unit_type and req.unit_value:
-                    variation_match = next((v for v in catalog_item.variations 
-                                          if v.unit_type == req.unit_type and v.unit_value == req.unit_value), None)
-                    if variation_match:
-                        display_base_price = variation_match.base_price
 
             # 4. Check for existing quote
             existing_quote = SupplierQuote.query.filter_by(
@@ -99,10 +116,10 @@ def get_supply_requests():
             result.append({
                 "id": req.id,
                 "shop_id": req.shop_id,
-                "shop_name": req.shop.name,
+                "shop_name": s_name,
                 "product_id": req.product_id,
-                "product_name": req.product.name,
-                "product_sku": req.product.sku,
+                "product_name": p_name,
+                "product_sku": p_sku,
                 "quantity": req.quantity_needed,
                 "unit_type": req.unit_type,
                 "unit_value": req.unit_value,
