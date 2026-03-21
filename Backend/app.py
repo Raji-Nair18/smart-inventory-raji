@@ -23,19 +23,20 @@ def create_app():
     db.init_app(app)
     Migrate(app, db)
     
-    # MOST BASIC CORS POSSIBLE
-    CORS(app)
+    # REMOVED flask-cors and rely ONLY on manual after_request for absolute control
+    # CORS(app) 
     
     @app.before_request
     def log_request_info():
-        # Only log in debug mode to avoid cluttering production logs too much, but for now we need it
-        print(f"DEBUG: Request: {app.request.method} {app.request.url}")
+        from flask import request
+        print(f"DEBUG: Request: {request.method} {request.url}")
 
     @app.after_request
     def add_cors_headers(response):
+        # Explicitly set headers to avoid duplicates or missing ones
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Headers'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
+        response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,PATCH,OPTIONS'
         response.headers['Access-Control-Max-Age'] = '86400'
         return response
 
