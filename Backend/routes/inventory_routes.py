@@ -161,39 +161,55 @@ def record_transaction():
                     final_discount = expiry_disc
 
         # 7. Finalize Transaction
-        salesman_obj = Salesman.query.filter_by(salesman_id_code=salesman_id_code).first()
-        salesman_db_id = salesman_obj.id if salesman_obj else None
-        incentive = 0.0
-        if transaction_type == 'SALE' and salesman_obj:
-            incentive = ((unit_price * quantity) * salesman_obj.incentive_rate) / 100.0
+        try:
+            salesman_obj = Salesman.query.filter_by(salesman_id_code=salesman_id_code).first()
+            salesman_db_id = salesman_obj.id if salesman_obj else None
+            incentive = 0.0
+            if transaction_type == 'SALE' and salesman_obj:
+                incentive = ((unit_price * quantity) * salesman_obj.incentive_rate) / 100.0
 
-        new_tx = Transaction(
-            shop_id=product.shop_id,
-            product_id=product.id,
-            transaction_type=transaction_type,
-            quantity=quantity,
-            unit_price=float(unit_price),
-            salesman_id=salesman_db_id,
-            customer_id=customer_db_id,
-            incentive_amount=float(incentive),
-            is_birthday_sale=is_birthday_sale,
-            discount_amount=float(final_discount * quantity),
-            unit_type=unit_type,
-            unit_value=unit_value
-        )
-        
-        if transaction_type == 'SALE' and customer_db_id:
-            customer_obj = Customer.query.get(customer_db_id)
-            if customer_obj:
-                customer_obj.loyalty_points = (customer_obj.loyalty_points or 0) + int((unit_price * quantity) / 100)
+            new_tx = Transaction(
+                shop_id=product.shop_id,
+                product_id=product.id,
+                transaction_type=transaction_type,
+                quantity=quantity,
+                unit_price=float(unit_price),
+                salesman_id=salesman_db_id,
+                customer_id=customer_db_id,
+                incentive_amount=float(incentive),
+                is_birthday_sale=is_birthday_sale,
+                discount_amount=float(final_discount * quantity),
+                unit_type=unit_type,
+                unit_value=unit_value
+            )
+            
+            if transaction_type == 'SALE' and customer_db_id:
+                customer_obj = Customer.query.get(customer_db_id)
+                if customer_obj:
+                    customer_obj.loyalty_points = (customer_obj.loyalty_points or 0) + int((unit_price * quantity) / 100)
 
-        db.session.add(new_tx)
-        db.session.commit()
+            db.session.add(new_tx)
+            db.session.commit()
+            print(f"DEBUG: Transaction {new_tx.id} committed successfully")
+        except Exception as tx_err:
+            db.session.rollback()
+            print(f"ERROR: Failed to commit transaction: {tx_err}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"message": f"Database Error: {str(tx_err)}"}), 500
         
         # --- TRIGGER LOW STOCK CHECK AFTER COMMIT ---
         try:
+            # Start a fresh session for the low stock check to avoid transaction block issues
+            from models import db as db_instance
+            db_instance.session.begin_nested() # Create a savepoint if needed, or just proceed with clean state
+            
             # Re-fetch product in new session context to be safe
             product = Product.query.get(product.id)
+            if not product:
+                print(f"DEBUG: Product {product_id} not found for low stock check")
+                return jsonify({"message": "Success", "id": new_tx.id}), 201
+                
             print(f"DEBUG: Starting Low Stock check for {product.name} (ID: {product.id})")
             
             new_requests_created = []
@@ -280,11 +296,18 @@ def record_transaction():
                     notify_suppliers_for_request(shop_obj, product, qty, u_type, u_val)
 
         except Exception as low_stock_err:
+            db.session.rollback()
             import traceback
             print(f"ERROR in low stock check: {low_stock_err}")
             traceback.print_exc()
 
         return jsonify({"message": "Success", "id": new_tx.id}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"message": f"Server Error: {str(e)}"}), 500
 
     except Exception as e:
         db.session.rollback()
