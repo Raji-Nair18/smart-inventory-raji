@@ -202,7 +202,8 @@ def get_supply_requests():
                 "my_quote_gst": my_quote_gst,
                 "my_quote_grand_total": my_quote_grand_total,
                 "is_winner": existing_quote.status == 'Accepted' if existing_quote else False,
-                "is_top_customer": req.shop_id == top_shop_id if top_shop_id else False
+                "is_top_customer": req.shop_id == top_shop_id if top_shop_id else False,
+                "expiry_date": req.expiry_date.strftime('%Y-%m-%d') if req.expiry_date else None
             })
             
         return jsonify(result), 200
