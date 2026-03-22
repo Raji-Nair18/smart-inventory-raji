@@ -182,21 +182,33 @@ def update_request_status(req_id):
             # Auto-restock product when delivered
             product = Product.query.get(req.product_id)
             if product:
+                from models import ProductBatch, ProductUnitOption
+                
                 # 1. Update Variation Stock if applicable
+                unit_option = None
                 if req.unit_type and req.unit_value:
-                    from models import ProductUnitOption
-                    opt = ProductUnitOption.query.filter_by(
+                    unit_option = ProductUnitOption.query.filter_by(
                         product_id=product.id,
                         unit_type=req.unit_type,
                         unit_value=req.unit_value
                     ).first()
-                    if opt:
-                        opt.stock_quantity += req.quantity_needed
-                        print(f"DEBUG: Restocked variation {opt.unit_value} {opt.unit_type} by {req.quantity_needed}")
+                    if unit_option:
+                        unit_option.stock_quantity += req.quantity_needed
+                        print(f"DEBUG: Restocked variation {unit_option.unit_value} {unit_option.unit_type} by {req.quantity_needed}")
                 
                 # 2. Update main product stock (always increment for total tracking)
                 product.stock_quantity += req.quantity_needed
                 
+                # 3. CREATE NEW BATCH (FIFO support)
+                new_batch = ProductBatch(
+                    product_id=product.id,
+                    unit_option_id=unit_option.id if unit_option else None,
+                    quantity=req.quantity_needed,
+                    expiry_date=req.expiry_date
+                )
+                db.session.add(new_batch)
+                print(f"DEBUG: Created new batch for {product.name} with expiry {req.expiry_date}")
+
                 # UN-ARCHIVE if it was expired/archived
                 product.is_archived = False
                 
@@ -204,14 +216,14 @@ def update_request_status(req_id):
                 from models import ExpiredProduct
                 ExpiredProduct.query.filter_by(product_id=product.id, shop_id=product.shop_id).delete()
                 
-                # 3. FORCE REFRESH total stock from all variations to be 100% sure
+                # 4. FORCE REFRESH total stock from all variations to be 100% sure
                 if product.unit_options:
                     product.stock_quantity = sum(o.stock_quantity for o in product.unit_options)
                 
-                # 4. Update Expiry Date from the request (set during quote acceptance/payment)
+                # 5. Update main product's "latest" expiry date (as fallback)
                 if req.expiry_date:
                     product.expiry_date = req.expiry_date
-                    print(f"DEBUG: Updated product {product.name} expiry date to {product.expiry_date}")
+                    print(f"DEBUG: Updated product {product.name} primary expiry date to {product.expiry_date}")
                 
                 db.session.add(product)
                 db.session.commit()

@@ -98,25 +98,59 @@ def create_app():
         return "Backend is running! Please access the frontend (usually at http://localhost:5173)."
     
     def expire_scan_once():
-        from models import Product, ExpiredProduct
+        from models import Product, ExpiredProduct, ProductBatch
         today = date.today()
-        products = Product.query.filter(Product.expiry_date != None).all()
-        for p in products:
-            if p.expiry_date and p.expiry_date <= today:
-                exists = ExpiredProduct.query.filter_by(product_id=p.id).first()
+        
+        # Scan individual batches for expiry (NEW BATCH-BASED LOGIC)
+        expired_batches = ProductBatch.query.filter(ProductBatch.expiry_date != None, ProductBatch.expiry_date <= today).all()
+        
+        for batch in expired_batches:
+            product = Product.query.get(batch.product_id)
+            if product:
+                # Add to ExpiredProduct table (only for this batch's quantity)
+                # Check if an entry for this product + expiry date already exists to merge or avoid duplicate
+                exists = ExpiredProduct.query.filter_by(
+                    product_id=product.id, 
+                    shop_id=product.shop_id, 
+                    expiry_date=batch.expiry_date
+                ).first()
+                
                 if not exists:
                     archived = ExpiredProduct(
-                        product_id=p.id,
-                        shop_id=p.shop_id,
-                        name=p.name,
-                        sku=p.sku,
-                        category=p.category,
-                        expiry_date=p.expiry_date,
-                        shelf_life_days=p.shelf_life_days,
-                        stock_at_expiry=p.stock_quantity
+                        product_id=product.id,
+                        shop_id=product.shop_id,
+                        name=product.name,
+                        sku=product.sku,
+                        category=product.category,
+                        expiry_date=batch.expiry_date,
+                        shelf_life_days=product.shelf_life_days,
+                        stock_at_expiry=batch.quantity
                     )
                     db.session.add(archived)
-                p.is_archived = True
+                else:
+                    # Increment stock_at_expiry if already exists for this date
+                    exists.stock_at_expiry += batch.quantity
+                
+                # Deduct expired quantity from the product's main stock
+                product.stock_quantity -= batch.quantity
+                if product.stock_quantity < 0: product.stock_quantity = 0
+                
+                # If it was a variation batch, deduct from there too
+                if batch.unit_option_id:
+                    from models import ProductUnitOption
+                    opt = ProductUnitOption.query.get(batch.unit_option_id)
+                    if opt:
+                        opt.stock_quantity -= batch.quantity
+                        if opt.stock_quantity < 0: opt.stock_quantity = 0
+                
+                # Archive the product ONLY if total stock hits zero
+                if product.stock_quantity <= 0:
+                    product.is_archived = True
+                
+                # Delete the expired batch record
+                db.session.delete(batch)
+                print(f"DEBUG: Processed expired batch for {product.name} (Qty: {batch.quantity}, Expiry: {batch.expiry_date})")
+        
         db.session.commit()
 
     def auto_accept_quotes_once():

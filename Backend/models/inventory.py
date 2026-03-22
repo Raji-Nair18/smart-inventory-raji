@@ -91,3 +91,18 @@ class SupplyRequest(db.Model):
     product = db.relationship('Product', backref='supply_requests')
     shop = db.relationship('Shop', backref='supply_requests')
     supplier = db.relationship('Supplier', backref='supply_requests')
+
+class ProductBatch(db.Model):
+    """Tracks individual batches of a product with their own expiry dates (FIFO)"""
+    __tablename__ = 'product_batches'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    unit_option_id = db.Column(db.Integer, db.ForeignKey('product_unit_options.id'), nullable=True)
+    quantity = db.Column(db.Integer, default=0)
+    expiry_date = db.Column(db.Date, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    product = db.relationship('Product', backref=db.backref('batches', cascade="all, delete-orphan", lazy='dynamic'))
+    unit_option = db.relationship('ProductUnitOption', backref=db.backref('batches', cascade="all, delete-orphan", lazy='dynamic'))

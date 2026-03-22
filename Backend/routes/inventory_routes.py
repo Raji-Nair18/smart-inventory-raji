@@ -118,11 +118,30 @@ def record_transaction():
         unit_value = None
         
         if transaction_type == 'SALE':
+            from models import ProductBatch
+            
             if unit_option_id:
                 opt = ProductUnitOption.query.get(unit_option_id)
                 if opt and opt.product_id == product.id:
                     if opt.stock_quantity < quantity:
                         return jsonify({"message": f"Insufficient stock ({opt.stock_quantity} available)"}), 400
+                    
+                    # FIFO BATCH DEDUCTION for variations
+                    remaining_to_deduct = quantity
+                    # Order by created_at (FIFO) or expiry_date (FEFO - First Expired First Out)
+                    # The user mentioned FIFO logic by example, but usually FEFO is better for perishables.
+                    # Given the user's specific scenario, we'll use FIFO based on created_at.
+                    batches = ProductBatch.query.filter_by(unit_option_id=opt.id).order_by(ProductBatch.created_at.asc()).all()
+                    
+                    for batch in batches:
+                        if remaining_to_deduct <= 0: break
+                        if batch.quantity <= remaining_to_deduct:
+                            remaining_to_deduct -= batch.quantity
+                            db.session.delete(batch)
+                        else:
+                            batch.quantity -= remaining_to_deduct
+                            remaining_to_deduct = 0
+                    
                     opt.stock_quantity -= quantity
                     unit_price = opt.selling_price
                     unit_type = opt.unit_type
@@ -134,11 +153,34 @@ def record_transaction():
             else:
                 if product.stock_quantity < quantity:
                     return jsonify({"message": f"Insufficient stock ({product.stock_quantity} available)"}), 400
+                
+                # FIFO BATCH DEDUCTION for main product
+                remaining_to_deduct = quantity
+                batches = ProductBatch.query.filter_by(product_id=product.id, unit_option_id=None).order_by(ProductBatch.created_at.asc()).all()
+                
+                for batch in batches:
+                    if remaining_to_deduct <= 0: break
+                    if batch.quantity <= remaining_to_deduct:
+                        remaining_to_deduct -= batch.quantity
+                        db.session.delete(batch)
+                    else:
+                        batch.quantity -= remaining_to_deduct
+                        remaining_to_deduct = 0
+                
                 product.stock_quantity -= quantity
         else: # RESTOCK
             product.stock_quantity += quantity
             product.is_archived = False
             ExpiredProduct.query.filter_by(product_id=product.id).delete()
+            
+            # For manual RESTOCK via this API (if any), we should also create a batch
+            from models import ProductBatch
+            new_batch = ProductBatch(
+                product_id=product.id,
+                quantity=quantity,
+                expiry_date=product.expiry_date
+            )
+            db.session.add(new_batch)
 
         # 6. Discounts (Birthday / Expiry)
         is_birthday_sale = bool(data.get('is_birthday_sale'))
@@ -368,57 +410,58 @@ def get_products():
     if not shop_id:
         return jsonify([]), 200
         
-    # Fetch ALL products to check for expired ones
-    products = Product.query.filter_by(shop_id=shop_id).all()
+    from models import ProductBatch
     
-    result = []
+    # 1. Fetch ALL products
+    products = Product.query.filter_by(shop_id=shop_id).all()
     today = datetime.now().date()
-    for p in list(products):
-        if p.expiry_date and p.expiry_date <= today:
-            # If not already archived, archive it
-            if not p.is_archived:
-                exists = ExpiredProduct.query.filter_by(product_id=p.id, shop_id=p.shop_id).first()
-                if not exists:
-                    archived = ExpiredProduct(
-                        product_id=p.id,
-                        shop_id=p.shop_id,
-                        name=p.name,
-                        sku=p.sku,
-                        category=p.category,
-                        expiry_date=p.expiry_date,
-                        shelf_life_days=p.shelf_life_days,
-                        stock_at_expiry=p.stock_quantity
-                    )
-                    db.session.add(archived)
-                p.is_archived = True
-                db.session.commit()
+    
+    # 2. Re-calculate main stock_quantity from batches to ensure sync
+    for p in products:
+        # Check if variations exist
+        if p.unit_options:
+            for opt in p.unit_options:
+                batch_sum = db.session.query(db.func.sum(ProductBatch.quantity)).filter_by(unit_option_id=opt.id).scalar() or 0
+                if opt.stock_quantity != batch_sum:
+                    opt.stock_quantity = batch_sum
+            p.stock_quantity = sum(o.stock_quantity for o in p.unit_options)
         else:
-            # Product is NOT expired.
-            # 1. If it was archived, un-archive it
-            if p.is_archived:
-                p.is_archived = False
-                db.session.commit()
-                
-            # 2. CLEANUP: If there is an entry in ExpiredProduct for this SKU/ID, remove it
-            # We check by both product_id and SKU to ensure full cleanup
-            ExpiredProduct.query.filter_by(product_id=p.id, shop_id=p.shop_id).delete()
-            if p.sku:
-                ExpiredProduct.query.filter_by(sku=p.sku, shop_id=p.shop_id).delete()
-            db.session.commit()
+            batch_sum = db.session.query(db.func.sum(ProductBatch.quantity)).filter_by(product_id=p.id, unit_option_id=None).scalar() or 0
+            if p.stock_quantity != batch_sum:
+                p.stock_quantity = batch_sum
+        
+        # Determine EARLIEST expiry date from active batches
+        earliest_batch = ProductBatch.query.filter(
+            ProductBatch.product_id == p.id,
+            ProductBatch.expiry_date != None,
+            ProductBatch.quantity > 0
+        ).order_by(ProductBatch.expiry_date.asc()).first()
+        
+        if earliest_batch:
+            p.expiry_date = earliest_batch.expiry_date
+        
+        # If total stock is 0, archive it
+        if p.stock_quantity <= 0:
+            p.is_archived = True
+        else:
+            p.is_archived = False
+            
+    db.session.commit()
 
-    # Now re-filter to only show active products on the dashboard
+    # Now build the result for the dashboard
+    result = []
     active_products = [p for p in products if not p.is_archived]
+    
     for p in active_products:
         status = "In Stock"
         discounted_price = None
         
-        # Check Expiry
+        # Check Expiry based on earliest batch
         if p.expiry_date:
-            days_to_expiry = (p.expiry_date - datetime.now().date()).days
+            days_to_expiry = (p.expiry_date - today).days
             if 0 <= days_to_expiry <= 7:
                 status = "Expiring Soon"
                 discounted_price = p.selling_price * 0.8
-            # Fully expired items are auto-archived and removed earlier
 
         if p.stock_quantity <= p.reorder_level:
             status = "Low Stock"
@@ -442,7 +485,10 @@ def get_products():
                 "cost_price": opt.cost_price,
                 "stock_quantity": opt.stock_quantity,
                 "reorder_level": opt.reorder_level,
-                "restock_quantity": opt.restock_quantity
+                "restock_quantity": opt.restock_quantity,
+                "expiry_date": (ProductBatch.query.filter_by(unit_option_id=opt.id, product_id=p.id)
+                                .order_by(ProductBatch.expiry_date.asc())
+                                .first().expiry_date.strftime('%Y-%m-%d') if ProductBatch.query.filter_by(unit_option_id=opt.id, product_id=p.id).first() else None)
             } for opt in p.unit_options]
         })
     return jsonify(result), 200
@@ -682,25 +728,48 @@ def add_product():
         db.session.add(p)
         db.session.flush() # Get product ID
 
-        # Handle Unit Options
+        # Handle Unit Options & Create Initial Batches
         added_options = []
+        from models import ProductBatch
         for opt in unit_options:
             try:
+                stock_qty = safe_int(opt.get('stock_quantity'))
                 new_opt = ProductUnitOption(
                     product_id=p.id,
                     unit_type=opt.get('unit_type') or 'units',
                     unit_value=safe_float(opt.get('unit_value')),
                     cost_price=safe_float(opt.get('cost_price')),
                     selling_price=safe_float(opt.get('selling_price')),
-                    stock_quantity=safe_int(opt.get('stock_quantity')),
+                    stock_quantity=stock_qty,
                     reorder_level=safe_int(opt.get('reorder_level'), 10),
                     restock_quantity=safe_int(opt.get('restock_quantity'), 50)
                 )
                 db.session.add(new_opt)
+                db.session.flush() # Get opt.id
+                
+                # Create initial batch for this variation
+                if stock_qty > 0:
+                    initial_batch = ProductBatch(
+                        product_id=p.id,
+                        unit_option_id=new_opt.id,
+                        quantity=stock_qty,
+                        expiry_date=p.expiry_date
+                    )
+                    db.session.add(initial_batch)
+                
                 added_options.append(new_opt)
             except Exception as ve:
                 print(f"DEBUG: Skipping invalid unit option: {ve}")
                 continue
+
+        # If no variations, create initial batch for main product
+        if not unit_options and total_stock > 0:
+            initial_batch = ProductBatch(
+                product_id=p.id,
+                quantity=total_stock,
+                expiry_date=p.expiry_date
+            )
+            db.session.add(initial_batch)
 
         db.session.commit()
         
