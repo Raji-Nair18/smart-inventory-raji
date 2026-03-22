@@ -239,9 +239,9 @@ def update_request_status(req_id):
             
         # Update expiry if provided during any status update
         if new_expiry:
-            from datetime import datetime
+            from datetime import datetime as dt
             try:
-                req.expiry_date = datetime.strptime(new_expiry, '%Y-%m-%d').date()
+                req.expiry_date = dt.strptime(new_expiry, '%Y-%m-%d').date()
                 print(f"DEBUG: Updated request expiry to {req.expiry_date} during delivery")
             except Exception as e:
                 print(f"DEBUG: Invalid expiry format provided: {e}")
