@@ -17,7 +17,7 @@ const SupplierDashboard = () => {
     variations: [{ unit_type: 'litres', unit_value: '', base_price: '' }]
   });
   
-  // Modal State
+  // Modal State (NOT USED ANYMORE - Simplified Flow)
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [expiryDate, setExpiryDate] = useState('');
@@ -186,31 +186,26 @@ const SupplierDashboard = () => {
 
   const handleUpdateStatus = async (id, status) => {
       if (status === 'Delivered') {
-          // If we already have an expiry date from the quote, just deliver immediately
-          const req = requests.find(r => r.id === id);
-          if (req && req.expiry_date && req.expiry_date !== 'Not Specified') {
-              // Direct delivery using existing expiry date
-              try {
-                  const res = await fetch(`${API_BASE_URL}/supplier/requests/${id}/update`, {
-                      method: 'POST',
-                      headers: { 
-                          'Content-Type': 'application/json',
-                          'Authorization': `Bearer ${token}` 
-                      },
-                      body: JSON.stringify({ status: 'Delivered' })
-                  });
-                  if (res.ok) {
-                      alert(`Request marked as Delivered`);
-                      fetchRequests(); 
-                      return;
-                  }
-              } catch (e) {
-                  console.error("Direct delivery failed, falling back to modal", e);
+          // ALWAYS mark as Delivered immediately without any modal or extra expiry date input
+          try {
+              const res = await fetch(`${API_BASE_URL}/supplier/requests/${id}/update`, {
+                  method: 'POST',
+                  headers: { 
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${token}` 
+                  },
+                  body: JSON.stringify({ status: 'Delivered' })
+              });
+              if (res.ok) {
+                  alert(`Request marked as Delivered`);
+                  fetchRequests(); 
+              } else {
+                  const errorData = await res.json();
+                  alert(errorData.message || 'Failed to update status');
               }
+          } catch (e) {
+              alert('Error updating status');
           }
-          
-          // Fallback to modal if no expiry date exists or direct delivery failed
-          openDeliveryModal(id);
           return;
       }
 
@@ -514,7 +509,7 @@ const SupplierDashboard = () => {
                                                     )}
                                                     {req.status === 'Shipped' && (
                                                         <button 
-                                                            onClick={() => openDeliveryModal(req.id)}
+                                                            onClick={() => handleUpdateStatus(req.id, 'Delivered')}
                                                             className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 text-sm font-medium shadow-sm transition-colors flex items-center space-x-2"
                                                         >
                                                             <FaCheckCircle />
