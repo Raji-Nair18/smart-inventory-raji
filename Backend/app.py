@@ -27,6 +27,20 @@ def create_app():
     from flask_cors import CORS
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
     
+    # RUN MIGRATIONS ON STARTUP (Autonomously handle Neon/SQLite column updates)
+    with app.app_context():
+        try:
+            print("INFO: Running database migrations (expiry_date and batches)...")
+            from migrate_expiry_date import migrate as migrate_expiry
+            from migrate_batches import migrate_batches
+            migrate_expiry()
+            migrate_batches()
+            print("INFO: Database migrations completed successfully.")
+        except Exception as me:
+            print(f"WARNING: Database migration error during startup: {me}")
+            import traceback
+            traceback.print_exc()
+    
     @app.before_request
     def handle_preflight():
         if request.method == "OPTIONS":
