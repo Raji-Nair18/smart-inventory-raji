@@ -227,6 +227,7 @@ def update_request_status(req_id):
         
     data = request.get_json()
     new_status = data.get('status')
+    new_expiry = data.get('expiry_date') # Allow supplier to update expiry during delivery
     
     if new_status:
         # Check if new status is valid for current state
@@ -235,6 +236,15 @@ def update_request_status(req_id):
         if new_status == 'Delivered' and req.status != 'Shipped':
             return jsonify({"message": "You must ship the order before delivering it."}), 400
             
+        # Update expiry if provided during any status update
+        if new_expiry:
+            from datetime import datetime
+            try:
+                req.expiry_date = datetime.strptime(new_expiry, '%Y-%m-%d').date()
+                print(f"DEBUG: Updated request expiry to {req.expiry_date} during delivery")
+            except Exception as e:
+                print(f"DEBUG: Invalid expiry format provided: {e}")
+
         req.status = new_status
         if new_status == 'Delivered':
             # Auto-restock product when delivered
@@ -258,14 +268,16 @@ def update_request_status(req_id):
                 product.stock_quantity += req.quantity_needed
                 
                 # 3. CREATE NEW BATCH (FIFO support)
+                # Use the latest expiry_date (either from quote or updated during delivery)
+                batch_expiry = req.expiry_date
                 new_batch = ProductBatch(
                     product_id=product.id,
                     unit_option_id=unit_option.id if unit_option else None,
                     quantity=req.quantity_needed,
-                    expiry_date=req.expiry_date
+                    expiry_date=batch_expiry
                 )
                 db.session.add(new_batch)
-                print(f"DEBUG: Created new batch for {product.name} with expiry {req.expiry_date}")
+                print(f"DEBUG: Created new batch for {product.name} with expiry {batch_expiry}")
 
                 # UN-ARCHIVE if it was expired/archived
                 product.is_archived = False
@@ -279,8 +291,8 @@ def update_request_status(req_id):
                     product.stock_quantity = sum(o.stock_quantity for o in product.unit_options)
                 
                 # 5. Update main product's "latest" expiry date (as fallback)
-                if req.expiry_date:
-                    product.expiry_date = req.expiry_date
+                if batch_expiry:
+                    product.expiry_date = batch_expiry
                     print(f"DEBUG: Updated product {product.name} primary expiry date to {product.expiry_date}")
                 
                 db.session.add(product)
