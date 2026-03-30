@@ -1,0 +1,959 @@
+app.py
+from flask import Flask, render_template, request, redirect, url_for, session
+import sqlite3
+from db import get_db
+
+app = Flask(__name__)
+app.secret_key = "secret123"
+
+
+
+
+# -----------------------
+# ROUTES
+# -----------------------
+
+@app.route("/")
+def home():
+    return redirect(url_for("login"))
+
+# register
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        name = request.form["name"]
+        email = request.form["email"]
+        password = request.form["password"]
+        role = request.form["role"]
+        location = request.form["location"]
+        pincode = request.form["pincode"]
+
+
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("""
+        INSERT INTO users (name, email, password, role, location, pincode)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,(name, email, password, role, location, pincode))
+            
+
+        conn.commit()
+        conn.close()
+
+        return redirect("/login")
+
+    return render_template("register.html")
+
+#login
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+
+        conn = get_db()
+        c = conn.cursor()
+        c.execute(
+            "SELECT * FROM users WHERE email=? AND password=?",
+            (email, password)
+        )
+        user = c.fetchone()
+        conn.close()
+
+        if user:
+            session["user_id"] = user[0]
+            session["role"] = user[4]
+
+            if user[4] == "restaurant":
+                return redirect("/restaurant")
+            elif user[4] == "agent":
+                return redirect("/agent")
+            else:
+                return redirect("/ngo")
+
+    return render_template("login.html")
+
+
+#logout
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
+
+
+
+
+# -----------------------
+# DASHBOARDS
+# -----------------------
+
+@app.route("/restaurant", methods=["GET", "POST"])
+def restaurant():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+
+    if request.method == "POST":
+        c.execute("""
+        INSERT INTO food 
+        (food_type, quantity, pickup_time, expiry_time, location, pincode, status, restaurant_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            request.form["food_type"],
+            request.form["quantity"],
+            request.form["pickup_time"],
+            request.form["expiry_time"],
+            request.form["location"],
+            request.form["pincode"],
+            "Available",
+           
+            session["user_id"]
+        ))
+        conn.commit()
+
+    c.execute("SELECT * FROM food WHERE restaurant_id=?", (session["user_id"],))
+    foods = c.fetchall()
+    
+    c.execute("""
+        SELECT * FROM notifications 
+        WHERE user_id=? AND is_read=0
+    """, (session["user_id"],))
+    notifications = c.fetchall()
+
+    conn.close()
+    # return render_template("restaurant.html", foods=foods)
+    return render_template("restaurant.html",foods=foods,notifications=notifications)
+
+
+@app.route("/mark_unavailable/<int:food_id>")
+def mark_unavailable(food_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        "UPDATE food SET status='Unavailable' WHERE id=?",
+        (food_id,)
+    )
+    conn.commit()
+    conn.close()
+
+    return redirect("/restaurant")
+
+
+@app.route("/agent", methods=["GET", "POST"])
+def agent():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+
+    if request.method == "POST":
+        c.execute("""
+            UPDATE users SET location=?, pincode=?
+            WHERE id=?
+        """, (
+            request.form["location"],
+            request.form["pincode"],
+            session["user_id"]
+        ))
+        conn.commit()
+
+    # agent pincode
+    c.execute("SELECT pincode FROM users WHERE id=?", (session["user_id"],))
+    agent_pincode = c.fetchone()[0]
+
+    # ONLY NGO accepted food
+    c.execute("""
+        SELECT * FROM food
+        WHERE status='NGO_Accepted' AND pincode=?
+    """, (agent_pincode,))
+    available_food = c.fetchall()
+
+    # agent deliveries
+    c.execute("""
+        SELECT * FROM food
+        WHERE agent_id=? AND status IN ('Agent_Accepted','Picked')
+    """, (session["user_id"],))
+    my_orders = c.fetchall()
+
+    conn.close()
+    return render_template("agent.html",
+        available_food=available_food,
+        my_orders=my_orders)
+
+
+@app.route("/agent_reject/<int:food_id>")
+def agent_reject(food_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("""
+        UPDATE food
+        SET status='Agent_Rejected'
+        WHERE id=?
+    """, (food_id,))
+
+    # restaurant alert
+    c.execute("SELECT restaurant_id FROM food WHERE id=?", (food_id,))
+    rid = c.fetchone()[0]
+
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (rid, "❌ Delivery agent REJECTED the delivery"))
+
+    conn.commit()
+    conn.close()
+    return redirect("/agent")
+
+
+@app.route("/agent_accept/<int:food_id>")
+def agent_accept(food_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # update status + agent
+    c.execute("""
+        UPDATE food
+        SET status='Agent_Accepted', agent_id=?
+        WHERE id=?
+    """, (session["user_id"], food_id))
+
+    # restaurant alert
+    c.execute("SELECT restaurant_id FROM food WHERE id=?", (food_id,))
+    rid = c.fetchone()[0]
+
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (rid, "🚚 Delivery agent ACCEPTED the delivery"))
+
+    conn.commit()
+    conn.close()
+    return redirect("/agent")
+
+
+
+
+import random
+
+@app.route("/ngo_accept/<int:food_id>")
+def ngo_accept(food_id):
+    conn = get_db()
+    c = conn.cursor()
+
+    otp = str(random.randint(1000, 9999))
+
+    # NGO accept
+    c.execute("""
+        UPDATE food SET status='NGO_Accepted'
+        WHERE id=?
+    """, (food_id,))
+
+    # NGO notification me OTP store
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (
+        session["user_id"],
+        f"OTP for food #{food_id} is {otp}"
+    ))
+
+    # restaurant notify
+    c.execute("SELECT restaurant_id FROM food WHERE id=?", (food_id,))
+    restaurant_id = c.fetchone()[0]
+
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (
+        restaurant_id,
+        "✅ NGO accepted food. Waiting for delivery."
+    ))
+
+    conn.commit()
+    conn.close()
+    return redirect("/ngo")
+
+
+
+
+import random
+from datetime import datetime
+
+@app.route("/pick_food/<int:food_id>")
+def pick_food(food_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    otp = str(random.randint(1000, 9999))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("""
+        UPDATE food
+        SET status='Picked', otp=?
+        WHERE id=? AND agent_id=?
+    """, (otp, food_id, session["user_id"]))
+
+    # NGO notify with OTP
+    c.execute("SELECT ngo_id FROM food WHERE id=?", (food_id,))
+    ngo_id = c.fetchone()[0]
+
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (ngo_id, f"📦 Food picked. Delivery OTP is {otp}"))
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/agent")
+
+
+
+
+@app.route("/verify_delivery/<int:food_id>", methods=["POST"])
+def verify_delivery(food_id):
+    entered_otp = request.form["otp"]
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # NGO ID
+    c.execute("SELECT ngo_id FROM food WHERE id=?", (food_id,))
+    ngo_id = c.fetchone()[0]
+
+    # latest OTP notification
+    c.execute("""
+        SELECT message FROM notifications
+        WHERE user_id=? AND message LIKE ?
+        ORDER BY id DESC LIMIT 1
+    """, (ngo_id, f"%food #{food_id}%"))
+
+    result = c.fetchone()
+    if not result or entered_otp not in result[0]:
+        conn.close()
+        return "❌ Invalid OTP"
+
+    # mark delivered
+    c.execute("""
+        UPDATE food SET status='Delivered'
+        WHERE id=?
+    """, (food_id,))
+
+    # names
+    c.execute("""
+        SELECT u1.name, u2.name, u3.name
+        FROM food f
+        JOIN users u1 ON f.restaurant_id=u1.id
+        JOIN users u2 ON f.ngo_id=u2.id
+        JOIN users u3 ON f.agent_id=u3.id
+        WHERE f.id=?
+    """, (food_id,))
+    restaurant, ngo, agent = c.fetchone()
+
+    # alerts
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (
+        f.restaurant_id,
+        f"✅ Food delivered by {agent} to NGO {ngo}"
+    ))
+
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (
+        ngo_id,
+        f"📦 Food delivered by agent {agent}"
+    ))
+
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (
+        session["user_id"],
+        f"✅ Delivery completed for restaurant {restaurant}"
+    ))
+
+    conn.commit()
+    conn.close()
+    return redirect("/agent")
+
+
+
+
+
+@app.route("/deliver_food/<int:food_id>")
+def deliver_food(food_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # Mark delivered by agent
+    c.execute("""
+        UPDATE food
+        SET status='Delivered'
+        WHERE id=? AND agent_id=?
+    """, (food_id, session["user_id"]))
+
+    # Get NGO + Restaurant + Agent name
+    c.execute("""
+        SELECT f.restaurant_id, f.ngo_id, u.name
+        FROM food f
+        JOIN users u ON u.id=f.agent_id
+        WHERE f.id=?
+    """, (food_id,))
+    restaurant_id, ngo_id, agent_name = c.fetchone()
+
+    # Notify NGO
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (
+        ngo_id,
+        f"📦 Food delivered by Agent {agent_name}. Please confirm receipt."
+    ))
+
+    conn.commit()
+    conn.close()
+    return redirect("/agent")
+
+
+
+@app.route("/read_notifications")
+def read_notifications():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""
+        UPDATE notifications SET is_read=1
+        WHERE user_id=?
+    """, (session["user_id"],))
+    conn.commit()
+    conn.close()
+
+    return redirect("/restaurant")
+
+
+@app.route("/ngo")
+def ngo():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # NGO pincode
+    c.execute("SELECT pincode FROM users WHERE id=?", (session["user_id"],))
+    ngo_pincode = c.fetchone()[0]
+
+    # Only available food
+    c.execute("""
+        SELECT * FROM food
+        WHERE status='Available' AND pincode=?
+    """, (ngo_pincode,))
+    foods = c.fetchall()
+
+    conn.close()
+    return render_template("ngo.html", foods=foods)
+
+
+
+
+
+@app.route("/ngo_reject/<int:food_id>")
+def ngo_reject(food_id):
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("""
+        UPDATE food SET status='NGO_Rejected'
+        WHERE id=?
+    """, (food_id,))
+
+    c.execute("SELECT restaurant_id FROM food WHERE id=?", (food_id,))
+    restaurant_id = c.fetchone()[0]
+
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (restaurant_id, "❌ NGO already has sufficient food"))
+
+    conn.commit()
+    conn.close()
+    return redirect("/ngo")
+
+@app.route("/ngo_confirm/<int:food_id>")
+def ngo_confirm(food_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # Update final status
+    c.execute("""
+        UPDATE food SET status='Received'
+        WHERE id=?
+    """, (food_id,))
+
+    # Get names
+    c.execute("""
+        SELECT 
+            r.name AS restaurant,
+            a.name AS agent,
+            n.name AS ngo
+        FROM food f
+        JOIN users r ON r.id=f.restaurant_id
+        JOIN users a ON a.id=f.agent_id
+        JOIN users n ON n.id=f.ngo_id
+        WHERE f.id=?
+    """, (food_id,))
+    restaurant, agent, ngo = c.fetchone()
+
+    # Notify restaurant
+    c.execute("""
+        INSERT INTO notifications (user_id, message)
+        VALUES (?,?)
+    """, (
+        f.restaurant_id,
+        f"✅ Food successfully delivered to NGO {ngo} by Agent {agent}."
+    ))
+
+    conn.commit()
+    conn.close()
+    return redirect("/ngo")
+
+
+
+# -----------------------
+# START SERVER
+# -----------------------
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+db.py
+import sqlite3
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(BASE_DIR, "foodconnect.db")
+
+def get_db():
+    return sqlite3.connect(DATABASE)
+
+def init_db():
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        email TEXT UNIQUE,
+        password TEXT,
+        role TEXT,
+        location TEXT,
+        pincode TEXT
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS food (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        food_type TEXT,
+        quantity TEXT,
+        pickup_time TEXT,
+        expiry_time TEXT,
+        location TEXT,
+        pincode TEXT,
+        status TEXT,
+        
+        restaurant_id INTEGER,
+        agent_id INTEGER
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        message TEXT,
+        is_read INTEGER DEFAULT 0
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+restaurant.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>restaurant dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+   
+    <h1 style="text-align:center; color:white;">Restaurant Dashboard</h1>
+    <a href="/logout">Logout</a>
+
+    {% if notifications %}
+    <div class="card">
+       <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>🔔 Alerts</h3>
+        <a href="/read_notifications" class="btn btn-success">
+            Mark all as read
+        </a>
+       </div>
+
+      <ul>
+         {% for note in notifications %}
+         <li>{{ note[2] }}</li>
+          {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+
+
+    <hr>
+
+    <h3>Post Leftover Food</h3>
+
+    <form method="post" class="food-form">
+       <div class="form-group">
+          <label>Food Type</label> 
+          <input type="text" name="food_type" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Quantity</label>
+          <input type="text" name="quantity" required>
+        </div>
+        <div class="form-group"></div>
+          <label>Pickup Date & Time</label>
+          <input type="datetime-local" name="pickup_time" required>
+        </div>
+        <div class="form-group"></div>
+           <label>Expiry Date & Time</label>
+           <input type="datetime-local" name="expiry_time" required>
+        </div>
+        <div class="form-group">
+           <label>Location</label>
+           <input type="text" name="location" placeholder="Restaurant Location" required>
+        </div>
+
+        <div class="form-group">
+           <label>Pincode</label>
+           <input type="text" name="pincode" placeholder="Pincode" required>
+        </div>
+
+   
+
+
+        <label class="checkbox">
+        <input type="checkbox" name="safety" required>
+        I confirm this food is safe to consume
+       </label>
+
+       <button type="submit">Post Food</button>
+
+    </form>
+
+
+    <hr>
+
+    <h2 style="text-align:center;">Your Food Posts</h2>
+
+   <table border="1">
+   <tr>
+     <th>Food</th>
+   
+     <th>Quantity</th>
+    
+     <th>Pickup</th>
+  
+     <th>Expiry</th>
+   
+     <th>Status</th>
+   
+     <th>Action</th>
+    </tr>
+
+  {% for food in foods %}
+    <tr>
+    <td>{{ food[1] }}</td>
+    <td>{{ food[2] }}</td>
+    <td>{{ food[3] }}</td>
+    <td>{{ food[4] }}</td>
+    <td>{{ food[7] }}</td>
+    <td>
+        {% if food[7] == "Available" %}
+        <a href="/mark_unavailable/{{ food[0] }}">Mark Unavailable</a>
+        {% else %}
+        —
+        {% endif %}
+    </td>
+    </tr>
+    {% endfor %}
+    </table>
+</body>
+</html>
+
+register.html
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register - FoodConnect</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header>
+    FoodConnect
+</header>
+
+<div class="container">
+    <h2>Register</h2>
+
+    <form method="post">
+        <input name="name" placeholder="Full Name" required>
+        <input name="email" placeholder="Email" required>
+        <input name="password" type="password" placeholder="Password" required>
+        
+
+        <select name="role" required>
+
+            <option value="">Select Role</option>
+            <option value="restaurant">Restaurant</option>
+            <option value="agent">Delivery Agent</option>
+            <option value="ngo">NGO / Beneficiary</option>
+        </select>
+        <input type="text" name="location" placeholder="Enter your location" required>
+
+         <input type="text" name="pincode" placeholder="Enter pincode" required>
+
+
+        <button type="submit">Register</button>
+    </form>
+
+    <a href="/login">Already have an account?</a>
+</div>
+
+</body>
+</html>
+login.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FoodConnect - Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- HEADER -->
+    <header class="header">
+        <div class="logo">FoodConnect</div>
+    </header>
+
+    <!-- LOGIN CARD -->
+    <div class="login-container">
+        <form class="login-form" method="post">
+            <h2>Login</h2>
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+            <p><a href="{{ url_for('register') }}">Create new account</a></p>
+        </form>
+    </div>
+</body>
+</html>
+
+agent.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agent Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header>
+    Delivery Agent Dashboard
+    <a href="/logout" class="logout">Logout</a>
+</header>
+
+
+<form method="POST">
+    <div class="form-group">
+        <label>Your Location</label>
+        <input type="text" name="location" placeholder="Your Location">
+    </div>
+
+    <div class="form-group">
+        <label>Your Pincode</label>
+        <input type="text" name="pincode" placeholder="Your Pincode">
+    </div>
+
+    <button class="btn">Save</button>
+</form>
+
+<div class="dashboard">
+
+<!-- AVAILABLE FOOD -->
+<div class="card">
+    <h3>Available Food (NGO Approved)</h3>
+
+    {% if available_food %}
+    <table>
+        <tr>
+            <th>Food</th>
+            <th>Qty</th>
+            <th>Pickup Time</th>
+            <th>Action</th>
+        </tr>
+
+        {% for food in available_food %}
+        <tr>
+            <td>{{ food[1] }}</td>
+            <td>{{ food[2] }}</td>
+            <td>{{ food[3] }}</td>
+            <td>
+                <a class="btn btn-success" href="/agent_accept/{{ food[0] }}">Accept</a>
+                <a class="btn btn-danger" href="/agent_reject/{{ food[0] }}">Reject</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+        <p>No NGO-approved food available.</p>
+    {% endif %}
+</div>
+
+
+<div class="card">
+    <h3>My Deliveries</h3>
+
+    {% if my_orders %}
+    <table>
+        <tr>
+            <th>Food</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+
+        {% for food in my_orders %}
+        <tr>
+            <td>{{ food[1] }}</td>
+            <td>{{ food[7] }}</td>
+            <td>
+
+                {% if food[7] == 'NGO_Accepted' %}
+                    <a class="btn" href="/pick_food/{{ food[0] }}">Pickup</a>
+
+                {% elif food[7] == 'Picked' %}
+                    <!-- 🔐 OTP BASED DELIVERY -->
+                    <form method="POST" action="/verify_delivery/{{ food[0] }}">
+                        <input type="text" name="otp" placeholder="Enter NGO OTP" required>
+                        <button class="btn btn-success">Confirm Delivery</button>
+                    </form>
+
+                {% elif food[7] == 'Delivered' %}
+                    ✅ Delivered
+
+                {% else %}
+                    —
+                {% endif %}
+
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+        <p>No active deliveries.</p>
+    {% endif %}
+</div>
+
+</div>
+</body>
+</html>
+
+ngo.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NGO Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header>
+    <h2>NGO Dashboard</h2>
+    <a href="/logout" class="logout">Logout</a>
+</header>
+
+<div class="dashboard">
+
+{% if foods %}
+    {% for food in foods %}
+    <div class="card">
+        <b>Food:</b> {{ food[1] }} <br>
+        <b>Quantity:</b> {{ food[2] }} <br>
+        <b>Pickup Time:</b> {{ food[3] }} <br>
+        <b>Location:</b> {{ food[5] }} <br>
+        <b>Status:</b> {{ food[7] }} <br><br>
+
+        <!-- NGO ACTIONS -->
+        {% if food[7] == 'Available' %}
+            <a href="/ngo_accept/{{ food[0] }}">
+                <button class="btn">Accept</button>
+            </a>
+
+            <a href="/ngo_reject/{{ food[0] }}">
+                <button class="btn btn-danger">Reject</button>
+            </a>
+
+        {% elif food[7] == 'Delivered' %}
+            <a href="/ngo_confirm/{{ food[0] }}">
+                <button class="btn btn-success">Confirm Received</button>
+            </a>
+
+        {% else %}
+            <span class="status-done">No action required</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+{% else %}
+    <p>No food requests available.</p>
+{% endif %}
+
+</div>
+
+</body>
+</html>

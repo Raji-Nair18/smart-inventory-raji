@@ -154,6 +154,30 @@ const SupplierDashboard = () => {
       } catch (e) { alert('Network error'); }
   };
 
+  const getGstRate = (name, category) => {
+    if (!name) return 0.18;
+    const n = name.toLowerCase().trim();
+    const c = (category || "").toLowerCase().trim();
+
+    const exempt = ["milk", "curd", "lassi", "paneer", "vegetable", "fruit", "pulse", "wheat flour", "atta", "rice", "salt", "honey", "roti", "naan", "khakhra", "chapati", "papad", "besan", "stamp", "postal", "book", "newspaper", "bangle", "earthenware", "sanitary napkin"];
+    const reduced = ["butter", "ghee", "cheese", "paneer", "namkeen", "bhujia", "jam", "jelly", "pasta", "cornflake", "oil", "shampoo", "soap", "toothpaste", "toothbrush", "detergent", "tableware", "kitchenware", "sewing machine"];
+
+    // User said: branded/packaged versions might have GST while fresh/unlabeled don't.
+    // Heuristic: if name contains 'branded', 'packaged', or 'processed', it's NOT exempt.
+    const isBranded = n.includes("branded") || n.includes("packaged") || n.includes("processed");
+
+    if (!isBranded) {
+      if (exempt.some(item => n.includes(item) || c.includes(item))) {
+        // Exception: branded paneer is 5%
+        if (n.includes("paneer") && isBranded) return 0.05;
+        return 0;
+      }
+    }
+
+    if (reduced.some(item => n.includes(item) || c.includes(item))) return 0.05;
+    return 0.18;
+  };
+
   const confirmDelivery = async () => {
       let body = { status: 'Delivered' };
       
@@ -451,10 +475,10 @@ const SupplierDashboard = () => {
                                                       Net Price: ₹{(req.base_price * req.quantity * (1 - (quoteInputs[req.id]?.discount_percent || 0)/100)).toFixed(2)}
                                                     </div>
                                                     <div className="text-xs text-right text-gray-400 italic">
-                                                      + GST (18%): ₹{(req.base_price * req.quantity * (1 - (quoteInputs[req.id]?.discount_percent || 0)/100) * 0.18).toFixed(2)}
+                                                      + GST ({(getGstRate(req.product_name, req.category) * 100).toFixed(0)}%): ₹{(req.base_price * req.quantity * (1 - (quoteInputs[req.id]?.discount_percent || 0)/100) * getGstRate(req.product_name, req.category)).toFixed(2)}
                                                     </div>
                                                     <div className="text-xs text-right text-green-600 font-bold">
-                                                      Grand Total: ₹{(req.base_price * req.quantity * (1 - (quoteInputs[req.id]?.discount_percent || 0)/100) * 1.18).toFixed(2)}
+                                                      Grand Total: ₹{(req.base_price * req.quantity * (1 - (quoteInputs[req.id]?.discount_percent || 0)/100) * (1 + getGstRate(req.product_name, req.category))).toFixed(2)}
                                                     </div>
                                                   </div>
                                                 )}
@@ -471,14 +495,14 @@ const SupplierDashboard = () => {
                                             )}
 
                                             {req.has_quoted && (
-                                              <div className={`p-3 rounded-lg border text-sm ${
+                                                <div className={`p-3 rounded-lg border text-sm ${
                                                 req.my_quote_status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-100' : 
                                                 req.my_quote_status === 'Accepted' ? 'bg-green-50 text-green-700 border-green-100' :
                                                 'bg-blue-50 text-blue-700 border-blue-100'
                                               }`}>
                                                 <p className="font-bold">Your Quote: {req.my_quote_status}</p>
                                                 <div className="mt-1 text-[11px] text-gray-600 border-t border-gray-200/50 pt-1">
-                                                  <p>GST (18%): ₹{(req.my_quote_gst || 0).toFixed(2)}</p>
+                                                  <p>GST ({(req.gst_rate !== undefined ? req.gst_rate : getGstRate(req.product_name, req.category)) * 100}%): ₹{(req.my_quote_gst || 0).toFixed(2)}</p>
                                                   <p className="font-bold text-gray-800 text-xs">Total: ₹{(req.my_quote_grand_total || 0).toFixed(2)}</p>
                                                 </div>
                                                 {req.my_quote_status === 'Accepted' && req.status === 'Awaiting Payment' && (
