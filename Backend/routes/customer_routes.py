@@ -328,23 +328,6 @@ def get_purchase_history():
         })
     return jsonify(history), 200
 
-@customer_bp.route('/search', methods=['GET'])
-@jwt_required()
-def search_customer():
-    phone = request.args.get('phone')
-    if not phone:
-        return jsonify(None), 200
-    customer = Customer.query.filter_by(phone=phone).first()
-    if customer:
-        return jsonify({
-            "name": customer.name,
-            "email": customer.email,
-            "phone": customer.phone,
-            "dob": customer.dob,
-            "address": customer.address
-        }), 200
-    return jsonify(None), 200
-
 @customer_bp.route('/offers', methods=['GET'])
 @jwt_required()
 def get_current_offers():
