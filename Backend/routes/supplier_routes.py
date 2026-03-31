@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import Product, Shop, Supplier, db, Transaction, SupplyRequest, SupplierCatalog, SupplierCatalogVariation, User, SupplierQuote, SupplierBill
 from services.notification_service import send_email
 from services.matching_service import find_catalog_match
+from services.gst_service import get_gst_rate
 from datetime import datetime
 
 supplier_bp = Blueprint('supplier', __name__)

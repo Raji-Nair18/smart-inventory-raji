@@ -43,6 +43,13 @@ const SupplierDashboard = () => {
         const data = await res.json();
         console.log("DEBUG: Requests received:", data);
         setRequests(data);
+      } else {
+        const err = await res.json();
+        console.error("Backend Error:", err);
+        // Alert the user if the backend crashed
+        if (res.status === 500) {
+          alert(`Backend Error: ${err.message || 'The server encountered an error while fetching requests.'}`);
+        }
       }
     } catch (err) {
       console.error("DEBUG: Fetch error:", err);
