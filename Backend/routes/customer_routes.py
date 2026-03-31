@@ -223,16 +223,16 @@ def get_birthday_offers():
                 discount = random.choice([10, 15, 20, 25])
                 offer_code = 'BDAY-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
                 
-                    new_offer = BirthdayOffer(
-                        customer_id=customer.id,
-                        shop_id=shop.id,
-                        discount_percent=discount,
-                        offer_code=offer_code,
-                        offer_text=f"Special {discount}% Birthday Discount for you at {shop.name}!",
-                        valid_until=today + timedelta(days=5) # Valid for 5 days as requested
-                    )
-                    db.session.add(new_offer)
-                db.session.commit()
+                new_offer = BirthdayOffer(
+                    customer_id=customer.id,
+                    shop_id=shop.id,
+                    discount_percent=discount,
+                    offer_code=offer_code,
+                    offer_text=f"Special {discount}% Birthday Discount for you at {shop.name}!",
+                    valid_until=today + timedelta(days=5) # Valid for 5 days as requested
+                )
+                db.session.add(new_offer)
+            db.session.commit()
             
     offers = BirthdayOffer.query.filter_by(
         customer_id=customer.id, 
