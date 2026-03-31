@@ -630,7 +630,7 @@ def submit_ration():
             
             offer.is_used = True
             customer.birthday_reward_used = True
-            new_order.birthday_discount_applied = True # Add this field to order
+            # new_order.birthday_discount_applied = True  <-- This was causing the error, moved below order creation
             print(f"DEBUG: Applied birthday discount of {offer.discount_percent}%: -INR {applied_discount}")
         else:
             print("DEBUG: Invalid or already used birthday offer code")
@@ -679,7 +679,7 @@ def submit_ration():
         if ration.shop and ration.shop.owner:
             shop_owner_email = ration.shop.owner.email
             subject = f"NEW RATION ORDER: {delivery_name or customer.name}"
-            body = f"Customer {delivery_name or customer.name} has placed a monthly ration order.\nSubtotal: INR {total_amount - gst_amount:.2f}\nGST (18%): INR {gst_amount:.2f}\nTotal: INR {grand_total:.2f}\nPayment: {payment_method.upper()}\nPhone: {delivery_phone or customer.phone}\nAddress: {new_order.delivery_address}\n\nPlease check your dashboard to process delivery."
+            body = f"Customer {delivery_name or customer.name} has placed a monthly ration order.\nSubtotal: INR {total_amount:.2f}\nGST: INR {total_gst_amount:.2f}\nTotal: INR {grand_total:.2f}\nPayment: {payment_method.upper()}\nPhone: {delivery_phone or customer.phone}\nAddress: {new_order.delivery_address}\n\nPlease check your dashboard to process delivery."
             send_email(shop_owner_email, subject, body)
             print(f"DEBUG: Notified shop owner {shop_owner_email}")
         else:
