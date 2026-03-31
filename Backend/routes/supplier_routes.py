@@ -85,27 +85,23 @@ def get_supply_requests():
         
         top_shop_id = top_shop[0] if top_shop else None
             
-        # 1. GET LINKED SHOP IDs
-        linked_shop_ids = [s.id for s in supplier.shops]
-        print(f"DEBUG: Supplier {supplier.id} is linked to shops: {linked_shop_ids}")
-        
-        # 2. FETCH ALL ACTIVE REQUESTS FOR THESE SHOPS
+        # 1. GET ALL PENDING/ACTIVE REQUESTS (Most permissive query)
         active_statuses = ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection', 'Awaiting Payment', 'Paid', 'Shipped', 'Delivered']
         
-        # We want to see requests that are either:
-        # - Unassigned (supplier_id is None) but from a linked shop
-        # - OR explicitly assigned to this supplier
+        # 2. FETCH REQUESTS
+        # PERMISSIVE: Show if shop is linked OR if request is specifically assigned to this supplier
+        # This was the logic that worked before the complex filters were added.
         from sqlalchemy import or_
+        linked_shop_ids = [s.id for s in supplier.shops]
+        
         requests = SupplyRequest.query.filter(
             or_(
-                # Case 1: Unassigned request from a linked shop
-                (SupplyRequest.shop_id.in_(linked_shop_ids)) & (SupplyRequest.supplier_id == None),
-                # Case 2: Request already assigned to this supplier (from any shop, though usually linked)
-                (SupplyRequest.supplier_id == supplier.id)
+                SupplyRequest.shop_id.in_(linked_shop_ids) if linked_shop_ids else False,
+                SupplyRequest.supplier_id == supplier.id
             )
         ).filter(SupplyRequest.status.in_(active_statuses)).all()
         
-        print(f"DEBUG: Found {len(requests)} total requests for supplier {supplier.id}")
+        print(f"DEBUG: Found {len(requests)} total requests for linked shops: {linked_shop_ids}")
         for r in requests:
             print(f"  - Request ID: {r.id}, Shop ID: {r.shop_id}, Status: {r.status}, Supplier ID: {r.supplier_id}")
         
