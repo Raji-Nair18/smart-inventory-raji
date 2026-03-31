@@ -233,7 +233,7 @@ const CustomerDashboard = () => {
         // Use local deliveryDetails as primary for the alert to ensure NO "N/A"
         const finalName = deliveryDetails.name || result.bill?.name || "Customer";
         const finalAddress = deliveryDetails.address || result.bill?.address || "Address provided";
-        const finalTotal = result.bill?.total || result.total || (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) + (paymentMethod === 'cod' ? 50 : 0);
+        const finalTotal = result.bill?.total || result.total || (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0);
         const finalOrderId = result.order_id || result.bill?.order_id || "NEW";
         
         alert(`✅ Order Placed Successfully!\n\nOrder ID: #ORD-${finalOrderId}\nCustomer: ${finalName}\nTotal: ₹${parseFloat(finalTotal).toFixed(2)}\nDelivery to: ${finalAddress}${selectedBirthdayOffer ? `\n\n🎂 Birthday Discount Applied: ${selectedBirthdayOffer.discount_percent}% OFF` : ''}`);
@@ -997,46 +997,50 @@ const CustomerDashboard = () => {
                     )}
 
                     <div className="bg-gray-50 rounded-2xl p-4 flex justify-between items-center">
-                      <span className="text-gray-600 font-medium">Items Total:</span>
+                      <span className="text-gray-600 font-medium">Items Subtotal:</span>
                       <div className="text-right">
                         {selectedBirthdayOffer && (
                           <span className="text-xs text-gray-400 line-through block">₹{ (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0).toFixed(2) }</span>
                         )}
                         <span className="text-lg font-bold text-gray-800">
                           ₹{ (
-                            (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) * 
+                            (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) *
                             (selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1)
                           ).toFixed(2) }
                         </span>
                       </div>
                     </div>
-                    <div className="bg-orange-50 rounded-2xl p-4 flex justify-between items-center border border-orange-100">
-                      <span className="text-orange-700 font-medium flex items-center">
-                        COD Handling Fee:
-                        <span className="ml-1 text-[10px] bg-orange-200 px-1.5 py-0.5 rounded-full">ONLY FOR COD</span>
-                      </span>
-                      <span className="text-lg font-bold text-orange-700">+ ₹50.00</span>
+                    <div className="bg-blue-50 rounded-2xl p-4 flex justify-between items-center border border-blue-100">
+                      <span className="text-blue-700 font-medium">GST (18%):</span>
+                      <span className="text-lg font-bold text-blue-700">₹{ (
+                        (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) *
+                        (selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1) * 0.18
+                      ).toFixed(2) }</span>
+                    </div>
+                    <div className="bg-green-50 rounded-2xl p-4 flex justify-between items-center border border-green-200">
+                      <span className="text-green-700 font-bold">Grand Total:</span>
+                      <span className="text-xl font-black text-green-700">₹{ (
+                        (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) *
+                        (selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1) * 1.18
+                      ).toFixed(2) }</span>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-3">
-                    <button 
-                      onClick={() => setShowQR(true)}
+                    <button
+                      onClick={() => submitRation(pendingOrder.id, 'online')}
                       className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all flex items-center justify-center space-x-3 shadow-lg shadow-indigo-100"
                     >
                       <FaQrcode />
-                      <span>Online Payment (Save ₹50)</span>
+                      <span>Pay Online</span>
                     </button>
-                    <button 
+                    <button
                       onClick={() => submitRation(pendingOrder.id, 'cod')}
                       disabled={isSubmittingRation}
                       className="w-full py-4 border-2 border-indigo-100 text-indigo-600 rounded-2xl font-bold hover:bg-indigo-50 transition-all flex items-center justify-center space-x-3"
                     >
                       <FaStore />
-                      <span>Cash on Delivery (₹{ (
-                        (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) * 
-                        (selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1) + 50
-                      ).toFixed(2) })</span>
+                      <span>Cash on Delivery (COD)</span>
                     </button>
                   </div>
                 </>

@@ -1423,17 +1423,27 @@ const ShopDashboard = () => {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {customers.map(customer => (
-                                    <tr key={customer.id}>
+                                {customers.map(customer => {
+                                    const isBirthday = customer.dob && (() => {
+                                        const today = new Date();
+                                        const dob = new Date(customer.dob);
+                                        return dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+                                    })();
+                                    return (
+                                    <tr key={customer.id} className={isBirthday ? 'bg-yellow-50' : ''}>
                                         <td className="px-6 py-4 text-sm font-bold text-indigo-600">{customer.customer_id_code || '-'}</td>
-                                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{customer.name}</td>
+                                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                                            {customer.name}
+                                            {isBirthday && <span className="ml-2 text-xs bg-pink-100 text-pink-700 px-2 py-0.5 rounded-full font-bold">🎂 TODAY</span>}
+                                        </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.email}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.phone || '-'}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.dob || '-'}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.address || '-'}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.joined}</td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                                 {customers.length === 0 && (
                                     <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">No customers found. Add one above to get started!</td></tr>
                                 )}

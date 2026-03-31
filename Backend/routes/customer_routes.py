@@ -602,30 +602,31 @@ def submit_ration():
     applied_discount = 0
     if birthday_offer_code:
         offer = BirthdayOffer.query.filter_by(
-            offer_code=birthday_offer_code, 
-            customer_id=customer.id, 
+            offer_code=birthday_offer_code,
+            customer_id=customer.id,
             shop_id=ration.shop_id,
             is_used=False
         ).first()
-        
+
         if offer and not customer.birthday_reward_used:
             applied_discount = (total_amount * offer.discount_percent) / 100.0
             total_amount -= applied_discount
             offer.is_used = True
-            customer.birthday_reward_used = True # Mark as used for the year
+            customer.birthday_reward_used = True
             print(f"DEBUG: Applied birthday discount of {offer.discount_percent}%: -INR {applied_discount}")
         else:
             print("DEBUG: Invalid or already used birthday offer code")
 
-    # Apply COD fee
-    if payment_method == 'cod':
-        total_amount += 50
+    # Calculate GST (18%)
+    gst_rate = 0.18
+    gst_amount = total_amount * gst_rate
+    grand_total = total_amount + gst_amount
 
     # Create the Order
     new_order = MonthlyRationOrder(
         customer_id=customer.id,
         shop_id=ration.shop_id,
-        total_amount=total_amount,
+        total_amount=grand_total,
         payment_method=payment_method,
         payment_status='paid' if payment_method == 'online' else 'pending',
         delivery_status='pending',
@@ -641,41 +642,45 @@ def submit_ration():
     
     # Update ration status
     ration.status = 'submitted'
-    
-    # NEW: Real-time stock deduction for online orders
-    if payment_method == 'online':
-        try:
-            from .inventory_routes import deduct_ration_stock
+
+    # Real-time stock deduction - for both online (paid immediately) and COD (deduct on delivery confirmation)
+    try:
+        from .inventory_routes import deduct_ration_stock
+        # For online payment, deduct stock immediately. For COD, it will be deducted on delivery.
+        if payment_method == 'online':
             success, msg = deduct_ration_stock(new_order.id)
             if success:
                 print(f"DEBUG: Real-time stock deducted for order {new_order.id}")
             else:
                 print(f"DEBUG: Stock deduction failed: {msg}")
-        except Exception as e:
-            print(f"DEBUG: Error in real-time stock deduction: {e}")
+    except Exception as e:
+        print(f"DEBUG: Error in real-time stock deduction: {e}")
 
     db.session.commit()
-    
+
     # Notify shop owner
     try:
         if ration.shop and ration.shop.owner:
             shop_owner_email = ration.shop.owner.email
             subject = f"NEW RATION ORDER: {delivery_name or customer.name}"
-            body = f"Customer {delivery_name or customer.name} has placed a monthly ration order.\nTotal: INR {total_amount}\nPayment: {payment_method.upper()}\nPhone: {delivery_phone or customer.phone}\nAddress: {new_order.delivery_address}\n\nPlease check your dashboard to process delivery."
+            body = f"Customer {delivery_name or customer.name} has placed a monthly ration order.\nSubtotal: INR {total_amount - gst_amount:.2f}\nGST (18%): INR {gst_amount:.2f}\nTotal: INR {grand_total:.2f}\nPayment: {payment_method.upper()}\nPhone: {delivery_phone or customer.phone}\nAddress: {new_order.delivery_address}\n\nPlease check your dashboard to process delivery."
             send_email(shop_owner_email, subject, body)
             print(f"DEBUG: Notified shop owner {shop_owner_email}")
         else:
             print("DEBUG: Shop or owner not found for notification")
     except Exception as e:
         print(f"DEBUG: Error notifying shop: {e}")
-        
+
     print(f"DEBUG: Order {new_order.id} placed successfully")
     return jsonify({
-        "message": "Order placed successfully!", 
+        "message": "Order placed successfully!",
         "order_id": new_order.id,
         "bill": {
             "order_id": new_order.id,
-            "total": total_amount,
+            "subtotal": total_amount - gst_amount,
+            "gst_amount": gst_amount,
+            "gst_percent": 18,
+            "total": grand_total,
             "payment": payment_method,
             "address": new_order.delivery_address,
             "name": delivery_name or customer.name,
