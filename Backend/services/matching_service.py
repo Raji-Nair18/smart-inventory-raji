@@ -49,28 +49,40 @@ def names_match(name1, name2):
         return True
         
     # 2. Substring match (e.g., "oil" matches "sunflower oil")
-    if n1 != "" and n2 != "" and (n1 in n2 or n2 in n1):
-        return True
+    # Improved: check if any word from one name is in the other
+    words1 = n1.split()
+    words2 = n2.split()
+    
+    if n1 != "" and n2 != "":
+        # Check if the shorter name is fully contained in the longer one as a word
+        # This handles "oil" matching "sunflower oil" or "cooking oil"
+        shorter, longer = (n1, n2) if len(n1) < len(n2) else (n2, n1)
+        if f" {shorter} " in f" {longer} " or longer.startswith(f"{shorter} ") or longer.endswith(f" {shorter}"):
+            return True
         
     # 3. Word-based matching with Synonyms
-    words1 = set(n1.split())
-    words2 = set(n2.split())
+    words1_set = set(words1)
+    words2_set = set(words2)
     
     # Filter out generic terms
     generic_terms = {'product', 'item', 'pack', 'bottle', 'box', 'quantity', 'brand', 'fresh', 'premium', 'best'}
-    words1 = {w for w in words1 if len(w) > 2 and w not in generic_terms}
-    words2 = {w for w in words2 if len(w) > 2 and w not in generic_terms}
+    words1_set = {w for w in words1_set if len(w) > 2 and w not in generic_terms}
+    words2_set = {w for w in words2_set if len(w) > 2 and w not in generic_terms}
     
-    if not words1 or not words2:
+    if not words1_set or not words2_set:
+        # Fallback for very short names like "oil" which were filtered out by len(w) > 2
+        # If one name is exactly one of the words in the other name, match it
+        if n1 in words2 or n2 in words1:
+            return True
         return False
 
     # Check for direct word overlap
-    if words1.intersection(words2):
+    if words1_set.intersection(words2_set):
         return True
         
     # Check Synonym Groups
-    for w1 in words1:
-        for w2 in words2:
+    for w1 in words1_set:
+        for w2 in words2_set:
             for group in SYNONYM_GROUPS:
                 # If both words are in the same synonym group, it's a match
                 # We need to normalize the group members too for comparison
