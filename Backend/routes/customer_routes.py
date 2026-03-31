@@ -451,15 +451,18 @@ def get_shop_products(shop_id):
         products = query.all()
         print(f"DEBUG: Found {len(products)} products for shop {shop_id}")
         
+        from services.gst_service import get_gst_rate
         result = []
         for p in products:
             try:
+                gst_rate = get_gst_rate(p.name, p.category)
                 # Basic product data
                 p_data = {
                     "id": p.id,
                     "name": p.name,
                     "category": p.category,
                     "price": p.selling_price if hasattr(p, 'selling_price') else 0.0,
+                    "gst_rate": gst_rate,
                     "stock": p.stock_quantity if hasattr(p, 'stock_quantity') else 0,
                     "unit_options": []
                 }
@@ -494,17 +497,20 @@ def get_monthly_ration():
     if not customer:
         return jsonify({"message": "Customer profile not found"}), 404
     
+    from services.gst_service import get_gst_rate
     rations = MonthlyRation.query.filter_by(customer_id=customer.id).all()
     result = []
     for r in rations:
         items = []
         for item in r.items:
+            gst_rate = get_gst_rate(item.product.name, item.product.category)
             items.append({
                 "product_id": item.product_id,
                 "product_name": item.product.name,
                 "quantity": item.quantity,
                 "unit": item.unit,
                 "price": item.price if hasattr(item, 'price') and item.price else item.product.selling_price,
+                "gst_rate": gst_rate,
                 "unit_option_id": item.unit_option_id if hasattr(item, 'unit_option_id') else None
             })
         result.append({
@@ -556,6 +562,7 @@ def save_monthly_ration():
 @jwt_required()
 def submit_ration():
     from models import BirthdayOffer
+    from services.gst_service import get_gst_rate
     current_user = get_jwt_identity()
     customer = Customer.query.filter_by(user_id=current_user['id']).first()
     if not customer:
@@ -575,6 +582,7 @@ def submit_ration():
     
     # Calculate total and check products
     total_amount = 0
+    total_gst_amount = 0
     items_to_create = []
     for item in ration.items:
         product = Product.query.get(item.product_id)
@@ -583,8 +591,13 @@ def submit_ration():
         # Get correct price from variation if exists
         price = item.price if hasattr(item, 'price') and item.price else product.selling_price
         
-        item_total = price * item.quantity
-        total_amount += item_total
+        # Dynamic GST calculation
+        gst_rate = get_gst_rate(product.name, product.category)
+        item_subtotal = price * item.quantity
+        item_gst = item_subtotal * gst_rate
+        
+        total_amount += item_subtotal
+        total_gst_amount += item_gst
         
         items_to_create.append(MonthlyRationOrderItem(
             product_id=product.id,
@@ -609,18 +622,20 @@ def submit_ration():
         ).first()
 
         if offer and not customer.birthday_reward_used:
+            # Discount applied on subtotal before GST
             applied_discount = (total_amount * offer.discount_percent) / 100.0
             total_amount -= applied_discount
+            # Re-calculate GST on discounted total proportional to original GST
+            # Or simpler: Apply discount to GST as well
+            total_gst_amount -= (total_gst_amount * offer.discount_percent) / 100.0
+            
             offer.is_used = True
             customer.birthday_reward_used = True
             print(f"DEBUG: Applied birthday discount of {offer.discount_percent}%: -INR {applied_discount}")
         else:
             print("DEBUG: Invalid or already used birthday offer code")
 
-    # Calculate GST (18%)
-    gst_rate = 0.18
-    gst_amount = total_amount * gst_rate
-    grand_total = total_amount + gst_amount
+    grand_total = total_amount + total_gst_amount
 
     # Create the Order
     new_order = MonthlyRationOrder(
@@ -677,9 +692,8 @@ def submit_ration():
         "order_id": new_order.id,
         "bill": {
             "order_id": new_order.id,
-            "subtotal": total_amount - gst_amount,
-            "gst_amount": gst_amount,
-            "gst_percent": 18,
+            "subtotal": total_amount,
+            "gst_amount": total_gst_amount,
             "total": grand_total,
             "payment": payment_method,
             "address": new_order.delivery_address,

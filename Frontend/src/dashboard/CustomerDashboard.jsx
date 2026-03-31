@@ -233,7 +233,12 @@ const CustomerDashboard = () => {
         // Use local deliveryDetails as primary for the alert to ensure NO "N/A"
         const finalName = deliveryDetails.name || result.bill?.name || "Customer";
         const finalAddress = deliveryDetails.address || result.bill?.address || "Address provided";
-        const finalTotal = result.bill?.total || result.total || (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0);
+        const finalTotal = result.bill?.total || result.total || (pendingOrder.items || []).reduce((acc, i) => {
+          const itemTotal = i.price * i.quantity;
+          const discountFactor = selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1;
+          const gstRate = i.gst_rate || 0.18;
+          return acc + (itemTotal * discountFactor * (1 + gstRate));
+        }, 0);
         const finalOrderId = result.order_id || result.bill?.order_id || "NEW";
         
         alert(`✅ Order Placed Successfully!\n\nOrder ID: #ORD-${finalOrderId}\nCustomer: ${finalName}\nTotal: ₹${parseFloat(finalTotal).toFixed(2)}\nDelivery to: ${finalAddress}${selectedBirthdayOffer ? `\n\n🎂 Birthday Discount Applied: ${selectedBirthdayOffer.discount_percent}% OFF` : ''}`);
@@ -1011,17 +1016,24 @@ const CustomerDashboard = () => {
                       </div>
                     </div>
                     <div className="bg-blue-50 rounded-2xl p-4 flex justify-between items-center border border-blue-100">
-                      <span className="text-blue-700 font-medium">GST (18%):</span>
+                      <span className="text-blue-700 font-medium">GST (Dynamic):</span>
                       <span className="text-lg font-bold text-blue-700">₹{ (
-                        (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) *
-                        (selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1) * 0.18
+                        (pendingOrder.items || []).reduce((acc, i) => {
+                          const itemTotal = i.price * i.quantity;
+                          const discountFactor = selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1;
+                          return acc + (itemTotal * discountFactor * (i.gst_rate || 0.18));
+                        }, 0)
                       ).toFixed(2) }</span>
                     </div>
                     <div className="bg-green-50 rounded-2xl p-4 flex justify-between items-center border border-green-200">
                       <span className="text-green-700 font-bold">Grand Total:</span>
                       <span className="text-xl font-black text-green-700">₹{ (
-                        (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) *
-                        (selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1) * 1.18
+                        (pendingOrder.items || []).reduce((acc, i) => {
+                          const itemTotal = i.price * i.quantity;
+                          const discountFactor = selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1;
+                          const gstRate = i.gst_rate || 0.18;
+                          return acc + (itemTotal * discountFactor * (1 + gstRate));
+                        }, 0)
                       ).toFixed(2) }</span>
                     </div>
                   </div>
@@ -1054,8 +1066,12 @@ const CustomerDashboard = () => {
                   </div>
                   <div className="space-y-2">
                     <p className="font-bold text-gray-800 text-lg">Scan to Pay ₹{ (
-                      (pendingOrder.items || []).reduce((acc, i) => acc + (i.price * i.quantity), 0) * 
-                      (selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1)
+                      (pendingOrder.items || []).reduce((acc, i) => {
+                        const itemTotal = i.price * i.quantity;
+                        const discountFactor = selectedBirthdayOffer ? (1 - selectedBirthdayOffer.discount_percent / 100) : 1;
+                        const gstRate = i.gst_rate || 0.18;
+                        return acc + (itemTotal * discountFactor * (1 + gstRate));
+                      }, 0)
                     ).toFixed(2) }</p>
                     <p className="text-xs text-gray-500">Scan this QR with any UPI app (GPay, PhonePe, etc.) to complete your order.</p>
                   </div>
