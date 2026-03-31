@@ -621,16 +621,14 @@ def submit_ration():
             is_used=False
         ).filter(BirthdayOffer.valid_until >= date.today()).first()
 
-        if offer and not customer.birthday_reward_used:
+        if offer and not offer.is_used:
             # Discount applied on subtotal before GST
             applied_discount = (total_amount * offer.discount_percent) / 100.0
             total_amount -= applied_discount
             # Apply discount to GST as well
             total_gst_amount -= (total_gst_amount * offer.discount_percent) / 100.0
             
-            offer.is_used = True
-            customer.birthday_reward_used = True
-            # new_order.birthday_discount_applied = True  <-- This was causing the error, moved below order creation
+            offer.is_used = True  # Only mark THIS specific offer as used (per-shop)
             print(f"DEBUG: Applied birthday discount of {offer.discount_percent}%: -INR {applied_discount}")
         else:
             print("DEBUG: Invalid or already used birthday offer code")

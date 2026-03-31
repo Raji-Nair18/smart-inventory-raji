@@ -194,13 +194,8 @@ def record_transaction():
                 offer_code = data.get('birthday_offer_code')
                 if offer_code:
                     off = BirthdayOffer.query.filter_by(offer_code=offer_code).first()
-                    if off: 
-                        off.is_used = True
-                        # Mark the customer's annual reward as used
-                        cust = Customer.query.get(customer_db_id)
-                        if cust:
-                            cust.birthday_reward_used = True
-                            db.session.add(cust)
+                    if off:
+                        off.is_used = True  # Only mark THIS specific offer as used (per-shop)
             elif product.expiry_date:
                 days = (product.expiry_date - datetime.now().date()).days
                 if 0 <= days <= 7:
@@ -210,26 +205,36 @@ def record_transaction():
 
         # 4. Finalize Transaction
         try:
-            # Check for birthday status and if reward already used
+            # Check for birthday status - check if there's a valid unused offer for THIS specific shop
             from datetime import datetime as dt
+            from models import BirthdayOffer
             is_birthday_sale = False
             final_discount = 0.0
+            active_offer = None
             
-            if customer_db_id:
+            if customer_db_id and salesman_obj:
                 customer_obj = Customer.query.get(customer_db_id)
                 if customer_obj and customer_obj.dob:
-                    # Logic to check if today is birthday (MM-DD match)
+                    # Check if today is birthday AND there's a valid unused offer for THIS shop
                     try:
                         dob_dt = dt.strptime(customer_obj.dob, '%Y-%m-%d')
-                        today = dt.now()
-                        if dob_dt.month == today.month and dob_dt.day == today.day:
-                            if not customer_obj.birthday_reward_used:
+                        today_dt = dt.now()
+                        if dob_dt.month == today_dt.month and dob_dt.day == today_dt.day:
+                            # Check for unused valid offer for THIS specific shop
+                            active_offer = BirthdayOffer.query.filter_by(
+                                customer_id=customer_db_id,
+                                shop_id=salesman_obj.shop_id,
+                                is_used=False
+                            ).filter(BirthdayOffer.valid_until >= today_dt.date()).first()
+                            
+                            if active_offer:
                                 is_birthday_sale = True
-                                final_discount = 15.0 # Fixed 15% birthday discount
-                                print(f"DEBUG: Applying birthday discount for {customer_obj.name}")
+                                final_discount = float(active_offer.discount_percent)
+                                print(f"DEBUG: Applying birthday discount ({final_discount}%) for {customer_obj.name} at shop {salesman_obj.shop_id}")
                             else:
-                                print(f"DEBUG: Birthday reward already used for {customer_obj.name}")
-                    except: pass
+                                print(f"DEBUG: No valid birthday offer for customer {customer_obj.name} at shop {salesman_obj.shop_id}")
+                    except Exception as e:
+                        print(f"DEBUG: Birthday check error: {e}")
 
             # Calculate GST based on Indian GST Rules
             from services.gst_service import get_gst_rate
@@ -268,8 +273,10 @@ def record_transaction():
                 customer_obj = Customer.query.get(customer_db_id)
                 if customer_obj:
                     customer_obj.loyalty_points = (customer_obj.loyalty_points or 0) + int(subtotal / 100)
-                    if is_birthday_sale:
-                        customer_obj.birthday_reward_used = True
+                    # Mark the specific offer as used if birthday sale was applied
+                    if is_birthday_sale and active_offer:
+                        active_offer.is_used = True
+                        print(f"DEBUG: Marked birthday offer {active_offer.offer_code} as used")
 
             db.session.add(new_tx)
             db.session.commit()
