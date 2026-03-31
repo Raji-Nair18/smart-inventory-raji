@@ -85,45 +85,38 @@ def get_supply_requests():
         
         top_shop_id = top_shop[0] if top_shop else None
             
-        # 1. GET LINKED SHOPS
+        # 1. GET ALL PENDING/ACTIVE REQUESTS (Most permissive query)
+        active_statuses = ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection', 'Awaiting Payment', 'Paid', 'Shipped', 'Delivered']
+        all_active_requests = SupplyRequest.query.filter(SupplyRequest.status.in_(active_statuses)).all()
+        
+        # 2. GET LINKED SHOP IDs
         linked_shop_ids = [s.id for s in supplier.shops]
-        print(f"DEBUG: Linked shops: {linked_shop_ids}")
         
-        # 2. FETCH REQUESTS
-        # PERMISSIVE: Show if:
-        # a) Request is specifically assigned to this supplier (regardless of status)
-        # b) Shop is linked to this supplier (regardless of status)
-        # c) Request is "Public" (no supplier assigned) AND matches catalog AND is in an active quoting state
-        from sqlalchemy import or_
-        
-        # Query A & B: Assigned or Linked
-        requests = SupplyRequest.query.filter(
-            or_(
-                SupplyRequest.shop_id.in_(linked_shop_ids) if linked_shop_ids else False,
-                SupplyRequest.supplier_id == supplier.id
-            )
-        ).all()
-        
-        # Query C: Public Matching Catalog
-        # We include MORE statuses here to be safe
-        active_quoting_statuses = ['Pending', 'Quotes Received', 'Awaiting Approval', 'Awaiting Selection', 'Awaiting Payment', 'Paid', 'Shipped']
-        public_requests = SupplyRequest.query.filter(
-            SupplyRequest.supplier_id == None,
-            SupplyRequest.status.in_(active_quoting_statuses)
-        ).all()
-        
-        for pr in public_requests:
-            # Avoid duplicates if already added via shop link
-            if any(r.id == pr.id for r in requests):
-                continue
+        # 3. FILTER MANUALLY FOR MAXIMUM RELIABILITY
+        final_requests = []
+        for req in all_active_requests:
+            is_match = False
+            
+            # Match if: Directly assigned
+            if req.supplier_id == supplier.id:
+                is_match = True
+            
+            # Match if: Shop is linked
+            elif req.shop_id in linked_shop_ids:
+                is_match = True
                 
-            # Check if supplier sells this product
-            p_name = pr.product.name if pr.product else ""
-            p_sku = pr.product.sku if pr.product else ""
-            if find_catalog_match(supplier.id, p_sku, p_name):
-                requests.append(pr)
+            # Match if: Unassigned (Public) AND in catalog
+            elif req.supplier_id is None:
+                p_name = req.product.name if req.product else ""
+                p_sku = req.product.sku if req.product else ""
+                if find_catalog_match(supplier.id, p_sku, p_name):
+                    is_match = True
+            
+            if is_match:
+                final_requests.append(req)
         
-        print(f"DEBUG: Found {len(requests)} total requests after filtering")
+        print(f"DEBUG: Found {len(final_requests)} total requests after manual filtering")
+        requests = final_requests # Use the filtered list for the loop below
         for r in requests:
             print(f"  - Request ID: {r.id}, Shop ID: {r.shop_id}, Status: {r.status}, Supplier ID: {r.supplier_id}")
         
