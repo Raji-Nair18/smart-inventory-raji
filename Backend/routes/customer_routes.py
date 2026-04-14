@@ -48,42 +48,48 @@ def debug_birthday_status():
     # Robust birthday check
     is_birthday_today = False
     dob_month_day = None
+    dob_month = None
+    dob_day = None
     if customer.dob:
-        patterns = [
-            (r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', 2, 3),
-            (r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', 1, 2),
-            (r'(\d{1,2})[-/](\d{1,2})', 1, 2),
-        ]
-        for pattern, m_group, d_group in patterns:
-            match = re.search(pattern, customer.dob)
-            if match:
-                m, d = match.group(m_group), match.group(d_group)
-                dob_month_day = f"{int(m):02d}-{int(d):02d}"
-                break
-        
-        if dob_month_day == today.strftime('%m-%d'):
-            is_birthday_today = True
+        try:
+            import re
+            patterns = [
+                (r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', 2, 3),  # YYYY-MM-DD
+                (r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', 1, 2),  # DD-MM-YYYY
+                (r'(\d{1,2})[-/](\d{1,2})', 1, 2),             # MM-DD
+            ]
+            for pattern, m_group, d_group in patterns:
+                match = re.search(pattern, customer.dob)
+                if match:
+                    m, d = match.group(m_group), match.group(d_group)
+                    dob_month_day = f"{int(m):02d}-{int(d):02d}"
+                    dob_month = int(m)
+                    dob_day = int(d)
+                    break
+            
+            if dob_month_day == today.strftime('%m-%d'):
+                is_birthday_today = True
+        except Exception as e:
+            print(f"DEBUG: DOB Parsing error: {e}")
     
     result["dob_parsed"] = dob_month_day
     result["is_birthday_today"] = is_birthday_today
     
     # Check if within 5-day birthday window
     is_within_birthday_window = False
-    if dob_month_day:
-        today_md = today.strftime('%m-%d')
-        if dob_month_day == today_md:
-            is_within_birthday_window = True
-        else:
-            try:
-                dob_parts = dob_month_day.split('-')
-                dob_month, dob_day = int(dob_parts[0]), int(dob_parts[1])
-                birthdate_this_year = date(today.year, dob_month, dob_day)
-                days_diff = (today - birthdate_this_year).days
-                if 0 <= days_diff <= 5:
-                    is_within_birthday_window = True
-            except:
-                pass
+    days_since_birthday = None
+    if dob_month is not None and dob_day is not None:
+        try:
+            birthdate_this_year = date(today.year, dob_month, dob_day)
+            days_diff = (today - birthdate_this_year).days
+            days_since_birthday = days_diff
+            # 0 = today, negative = upcoming, 1-5 = past few days
+            if 0 <= days_diff <= 5:
+                is_within_birthday_window = True
+        except:
+            pass
     result["is_within_birthday_window"] = is_within_birthday_window
+    result["days_since_birthday"] = days_since_birthday
     
     # Check all offers
     all_offers = BirthdayOffer.query.filter_by(customer_id=customer.id).all()
