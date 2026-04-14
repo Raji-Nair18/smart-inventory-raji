@@ -193,37 +193,36 @@ def get_birthday_offers():
     
     # Check if today is birthday
     is_birthday = False
+    dob_month_day = None
     if customer.dob:
         try:
-            # Robust parsing for MM-DD
+            # Robust parsing for MM-DD using regex
             import re
-            # Extract month and day using regex
-            match = re.search(r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', customer.dob) # YYYY-MM-DD
-            if match:
-                m, d = match.group(2), match.group(3)
-            else:
-                match = re.search(r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', customer.dob) # DD-MM-YYYY
-                if match:
-                    m, d = match.group(2), match.group(1)
-                else:
-                    match = re.search(r'(\d{1,2})[-/](\d{1,2})', customer.dob) # MM-DD
-                    if match:
-                        m, d = match.group(1), match.group(2)
+            # Try different patterns to extract MM-DD
+            patterns = [
+                (r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', 2, 3),  # YYYY-MM-DD -> groups 2,3
+                (r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', 1, 2),  # DD-MM-YYYY -> groups 1,2
+                (r'(\d{1,2})[-/](\d{1,2})', 1, 2),             # MM-DD -> groups 1,2
+            ]
             
-            if match:
-                dob_month_day = f"{int(m):02d}-{int(d):02d}"
-                if dob_month_day == today.strftime('%m-%d'):
-                    is_birthday = True
-                    print(f"DEBUG: Birthday MATCH! {dob_month_day}")
+            for pattern, m_group, d_group in patterns:
+                match = re.search(pattern, customer.dob)
+                if match:
+                    m, d = match.group(m_group), match.group(d_group)
+                    dob_month_day = f"{int(m):02d}-{int(d):02d}"
+                    break
+            
+            if dob_month_day and dob_month_day == today.strftime('%m-%d'):
+                is_birthday = True
+                print(f"DEBUG: Birthday MATCH! {dob_month_day}")
         except Exception as e:
             print(f"DEBUG: DOB Parsing error: {e}")
-
+    
     # If it's birthday period, ensure offers exist for EACH linked shop
     if is_birthday:
         print(f"DEBUG: Generating offers for {len(customer.shops)} shops")
         for shop in customer.shops:
             # Check if ANY offer (used or unused) exists for this shop for this birthday period
-            # An offer is for this period if its valid_until is within 5 days of today
             existing_offer = BirthdayOffer.query.filter_by(
                 customer_id=customer.id, 
                 shop_id=shop.id
