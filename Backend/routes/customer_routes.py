@@ -300,20 +300,60 @@ def search_customer_by_phone():
         return jsonify({"message": "Customer not found"}), 404
         
     # Check for birthday discount for current shop
-    from datetime import date
+    from datetime import date, timedelta
+    import random
+    import string
     from models import BirthdayOffer
     today = date.today()
     
-    # Check if today is birthday
-    is_birthday = False
-    if customer.dob and customer.dob[5:10] == today.strftime('%m-%d'):
-        is_birthday = True
+    # Robust birthday check
+    is_birthday_today = False
+    if customer.dob:
+        try:
+            import re
+            patterns = [
+                (r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', 2, 3),  # YYYY-MM-DD
+                (r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', 1, 2),  # DD-MM-YYYY
+                (r'(\d{1,2})[-/](\d{1,2})', 1, 2),             # MM-DD
+            ]
+            for pattern, m_group, d_group in patterns:
+                match = re.search(pattern, customer.dob)
+                if match:
+                    m, d = match.group(m_group), match.group(d_group)
+                    if f"{int(m):02d}-{int(d):02d}" == today.strftime('%m-%d'):
+                        is_birthday_today = True
+                        break
+        except Exception as e:
+            print(f"DEBUG: Search DOB Parsing error: {e}")
+
+    # Generate offers on the fly if it's birthday and shop doesn't have one yet
+    if is_birthday_today and shop_id:
+        existing_offer = BirthdayOffer.query.filter_by(
+            customer_id=customer.id, 
+            shop_id=shop_id
+        ).filter(BirthdayOffer.valid_until >= today).first()
+        
+        if not existing_offer:
+            # Generate offer for this shop
+            discount = random.choice([10, 15, 20, 25])
+            offer_code = 'BDAY-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            new_offer = BirthdayOffer(
+                customer_id=customer.id,
+                shop_id=shop_id,
+                discount_percent=discount,
+                offer_code=offer_code,
+                offer_text=f"Special {discount}% Birthday Discount for you!",
+                valid_until=today + timedelta(days=5)
+            )
+            db.session.add(new_offer)
+            db.session.commit()
+            print(f"DEBUG: On-the-fly offer generated for {customer.name} at shop {shop_id}")
         
     birthday_discount = 0
     offer_code = None
-    is_birthday_offer_active = False # New flag to return
+    is_birthday_offer_active = False 
     if shop_id:
-        # Find active unused offer for this shop (valid within 5 days of birthday)
+        # Find active unused offer for this shop
         offer = BirthdayOffer.query.filter_by(
             customer_id=customer.id, 
             shop_id=shop_id,
@@ -321,7 +361,6 @@ def search_customer_by_phone():
         ).filter(BirthdayOffer.valid_until >= today).first()
         
         if offer:
-            # We only show the discount if the offer is active and unused
             birthday_discount = offer.discount_percent
             offer_code = offer.offer_code
             is_birthday_offer_active = True
