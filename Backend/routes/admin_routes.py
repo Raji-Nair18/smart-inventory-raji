@@ -79,6 +79,18 @@ def delete_customer(cid):
     if not customer:
         return jsonify({"message": "Customer not found"}), 404
     
+    # Delete any birthday offers linked to this customer first to avoid constraint errors
+    from models import BirthdayOffer, MonthlyRation, MonthlyRationOrder, Sale, Transaction
+    BirthdayOffer.query.filter_by(customer_id=cid).delete()
+    
+    # Delete related ration orders to avoid constraints
+    MonthlyRation.query.filter_by(customer_id=cid).delete()
+    MonthlyRationOrder.query.filter_by(customer_id=cid).delete()
+    
+    # Nullify customer_id in sales and transactions instead of deleting the financial records
+    Sale.query.filter_by(customer_id=cid).update({Sale.customer_id: None})
+    Transaction.query.filter_by(customer_id=cid).update({Transaction.customer_id: None})
+    
     db.session.delete(customer)
     db.session.commit()
     return jsonify({"message": "Customer deleted permanently by admin"}), 200
