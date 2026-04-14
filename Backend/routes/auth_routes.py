@@ -58,29 +58,51 @@ def register():
             )
             db.session.add(new_supplier)
         
-        # If Customer, create Customer Profile
+        # If Customer, create or link Customer Profile
         elif data['role'] == 'customer':
-            import random
-            import string
-            unique_id = 'CUST-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-            new_customer = Customer(
-                customer_id_code=unique_id,
-                name=data['name'],
-                phone=phone,
-                email=data['email'],
-                address=data.get('address') or 'Not provided',
-                dob=data.get('dob'),
-                user_id=new_user.id
-            )
+            # Check if a customer record with this phone already exists
+            existing_customer = Customer.query.filter_by(phone=phone).first()
             
-            # Link to multiple shops
-            shop_ids = data.get('shop_ids', [])
-            if shop_ids:
-                shops = Shop.query.filter(Shop.id.in_(shop_ids)).all()
-                new_customer.shops.extend(shops)
+            if existing_customer:
+                # Link existing customer record to this user
+                existing_customer.user_id = new_user.id
+                # Update details if provided
+                if data.get('dob'): existing_customer.dob = data['dob']
+                if data.get('address'): existing_customer.address = data['address']
+                if data.get('name'): existing_customer.name = data['name']
                 
-            db.session.add(new_customer)
-            print(f"DEBUG: Customer profile {unique_id} created with {len(shop_ids)} shops")
+                # Link to additional shops selected during registration
+                shop_ids = data.get('shop_ids', [])
+                if shop_ids:
+                    shops = Shop.query.filter(Shop.id.in_(shop_ids)).all()
+                    for s in shops:
+                        if s not in existing_customer.shops:
+                            existing_customer.shops.append(s)
+                
+                db.session.add(existing_customer)
+                print(f"DEBUG: Linked existing customer profile {existing_customer.customer_id_code} to user {new_user.id}")
+            else:
+                import random
+                import string
+                unique_id = 'CUST-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                new_customer = Customer(
+                    customer_id_code=unique_id,
+                    name=data['name'],
+                    phone=phone,
+                    email=data['email'],
+                    address=data.get('address') or 'Not provided',
+                    dob=data.get('dob'),
+                    user_id=new_user.id
+                )
+                
+                # Link to multiple shops
+                shop_ids = data.get('shop_ids', [])
+                if shop_ids:
+                    shops = Shop.query.filter(Shop.id.in_(shop_ids)).all()
+                    new_customer.shops.extend(shops)
+                    
+                db.session.add(new_customer)
+                print(f"DEBUG: New customer profile {unique_id} created with {len(shop_ids)} shops")
             
         # If Salesman, create Salesman Profile
         elif data['role'] == 'salesman':

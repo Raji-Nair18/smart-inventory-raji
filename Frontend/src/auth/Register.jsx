@@ -89,7 +89,7 @@ const Register = () => {
       const payload = { 
         ...formData, 
         phone: phoneDigits,
-        shop_ids: formData.role === 'customer' ? [] : [formData.shop_id]
+        shop_ids: formData.role === 'customer' ? formData.selected_shops.map(s => s.id) : [formData.shop_id]
       };
 
       const response = await fetch(`${API_BASE_URL}/auth/register`, {

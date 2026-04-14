@@ -185,42 +185,51 @@ def get_birthday_offers():
     current_user = get_jwt_identity()
     customer = Customer.query.filter_by(user_id=current_user['id']).first()
     if not customer:
+        print("DEBUG: No customer profile found for user")
         return jsonify([])
         
     today = date.today()
+    print(f"DEBUG: Checking birthday offers for {customer.name} (DOB: {customer.dob}, Today: {today})")
     
-    # Check if today is birthday and reward not used this year
+    # Check if today is birthday
     is_birthday = False
     if customer.dob:
         try:
-            # Handle different DOB formats
-            dob_str = customer.dob
-            if '-' in dob_str:
-                dob_parts = dob_str.split('-')
-                if len(dob_parts) == 3: # YYYY-MM-DD or DD-MM-YYYY
-                    if len(dob_parts[0]) == 4: # YYYY-MM-DD
-                        dob_month_day = f"{dob_parts[1]}-{dob_parts[2]}"
-                    else: # DD-MM-YYYY
-                        dob_month_day = f"{dob_parts[1]}-{dob_parts[0]}"
-                elif len(dob_parts) == 2: # MM-DD
-                    dob_month_day = dob_str
+            # Robust parsing for MM-DD
+            import re
+            # Extract month and day using regex
+            match = re.search(r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', customer.dob) # YYYY-MM-DD
+            if match:
+                m, d = match.group(2), match.group(3)
+            else:
+                match = re.search(r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', customer.dob) # DD-MM-YYYY
+                if match:
+                    m, d = match.group(2), match.group(1)
+                else:
+                    match = re.search(r'(\d{1,2})[-/](\d{1,2})', customer.dob) # MM-DD
+                    if match:
+                        m, d = match.group(1), match.group(2)
             
-            if dob_month_day == today.strftime('%m-%d'):
-                is_birthday = True
-        except:
-            pass
+            if match:
+                dob_month_day = f"{int(m):02d}-{int(d):02d}"
+                if dob_month_day == today.strftime('%m-%d'):
+                    is_birthday = True
+                    print(f"DEBUG: Birthday MATCH! {dob_month_day}")
+        except Exception as e:
+            print(f"DEBUG: DOB Parsing error: {e}")
 
-    # If it's birthday, ensure offers exist for EACH linked shop
-    # Only generate offers ONCE per birthday - check if any offers exist for this birthday period
+    # If it's birthday period, ensure offers exist for EACH linked shop
     if is_birthday:
-        # Check if any offers were already generated for this birthday (valid_until includes today)
-        existing_any_offer = BirthdayOffer.query.filter_by(
-            customer_id=customer.id
-        ).filter(BirthdayOffer.valid_until >= today).first()
-        
-        if not existing_any_offer:
-            # First time generating for this birthday - create for all shops
-            for shop in customer.shops:
+        print(f"DEBUG: Generating offers for {len(customer.shops)} shops")
+        for shop in customer.shops:
+            # Check if ANY offer (used or unused) exists for this shop for this birthday period
+            # An offer is for this period if its valid_until is within 5 days of today
+            existing_offer = BirthdayOffer.query.filter_by(
+                customer_id=customer.id, 
+                shop_id=shop.id
+            ).filter(BirthdayOffer.valid_until >= today).first()
+            
+            if not existing_offer:
                 discount = random.choice([10, 15, 20, 25])
                 offer_code = 'BDAY-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
                 
@@ -230,13 +239,11 @@ def get_birthday_offers():
                     discount_percent=discount,
                     offer_code=offer_code,
                     offer_text=f"Special {discount}% Birthday Discount for you at {shop.name}!",
-                    valid_until=today + timedelta(days=5) # Valid for 5 days
+                    valid_until=today + timedelta(days=5)
                 )
                 db.session.add(new_offer)
-            db.session.commit()
-        else:
-            # Offers already generated for this birthday - don't regenerate
-            print(f"DEBUG: Birthday offers already exist for customer {customer.id} this period")
+                print(f"DEBUG: Generated {discount}% offer for {shop.name}")
+        db.session.commit()
             
     # Return ALL unused offers (valid ones only)
     offers = BirthdayOffer.query.filter_by(
@@ -244,6 +251,7 @@ def get_birthday_offers():
         is_used=False
     ).filter(BirthdayOffer.valid_until >= today).all()
     
+    print(f"DEBUG: Returning {len(offers)} active offers")
     return jsonify([{
         "id": o.id,
         "shop_id": o.shop_id,
