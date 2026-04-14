@@ -243,9 +243,12 @@ def record_transaction():
                             is_used=False
                         ).filter(BirthdayOffer.valid_until >= today).first()
                         
+                        print(f"DEBUG: Birthday match found. Customer {customer_db_id}, Shop {product.shop_id}, Offer: {active_offer}")
+                        
                         if active_offer:
                             is_birthday_sale = True
                             birthday_disc_pct = float(active_offer.discount_percent)
+                            print(f"DEBUG: Applying birthday discount {birthday_disc_pct}% from offer {active_offer.offer_code}")
 
             # Apply Birthday Discount if detected
             if is_birthday_sale:

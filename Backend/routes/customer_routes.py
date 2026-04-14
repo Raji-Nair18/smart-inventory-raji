@@ -191,6 +191,66 @@ def add_customer():
     db.session.add(new_customer)
     db.session.commit()
     
+    # Generate birthday offers IMMEDIATELY if within birthday window
+    from datetime import date, timedelta
+    today = date.today()
+    if new_customer.dob:
+        try:
+            import re
+            patterns = [
+                (r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', 2, 3),
+                (r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', 1, 2),
+                (r'(\d{1,2})[-/](\d{1,2})', 1, 2),
+            ]
+            dob_month_day = None
+            for pattern, m_group, d_group in patterns:
+                match = re.search(pattern, new_customer.dob)
+                if match:
+                    m, d = match.group(m_group), match.group(d_group)
+                    dob_month_day = f"{int(m):02d}-{int(d):02d}"
+                    break
+            
+            if dob_month_day:
+                today_md = today.strftime('%m-%d')
+                is_birthday_today = dob_month_day == today_md
+                is_within_window = False
+                
+                if not is_birthday_today:
+                    try:
+                        dob_parts = dob_month_day.split('-')
+                        dob_month, dob_day = int(dob_parts[0]), int(dob_parts[1])
+                        birthdate_this_year = date(today.year, dob_month, dob_day)
+                        days_diff = (today - birthdate_this_year).days
+                        if 0 <= days_diff <= 5:
+                            is_within_window = True
+                    except:
+                        pass
+                
+                if is_birthday_today or is_within_window:
+                    # Generate offers for ALL linked shops
+                    for linked_shop in new_customer.shops:
+                        existing_offer = BirthdayOffer.query.filter_by(
+                            customer_id=new_customer.id, 
+                            shop_id=linked_shop.id
+                        ).filter(BirthdayOffer.valid_until >= today).first()
+                        
+                        if not existing_offer:
+                            discount = random.choice([10, 15, 20, 25])
+                            offer_code = 'BDAY-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                            new_offer = BirthdayOffer(
+                                customer_id=new_customer.id,
+                                shop_id=linked_shop.id,
+                                discount_percent=discount,
+                                offer_code=offer_code,
+                                offer_text=f"Special {discount}% Birthday Discount for you at {linked_shop.name}!",
+                                valid_until=today + timedelta(days=5)
+                            )
+                            db.session.add(new_offer)
+                            print(f"DEBUG: Generated birthday offer for new customer {new_customer.name} at shop {linked_shop.name}")
+                    db.session.commit()
+        except Exception as e:
+            print(f"DEBUG: Error generating birthday offers on add_customer: {e}")
+    
     # Send birthday wish if birthday is today
     try:
         from services.notification_service import send_birthday_wish
@@ -478,9 +538,11 @@ def search_customer_by_phone():
 
     # Generate offers on the fly if within birthday window and shop doesn't have one yet
     if is_within_birthday_window and shop_id:
+        # Check for UNUSED and VALID offer only
         existing_offer = BirthdayOffer.query.filter_by(
             customer_id=customer.id, 
-            shop_id=shop_id
+            shop_id=shop_id,
+            is_used=False
         ).filter(BirthdayOffer.valid_until >= today).first()
         
         if not existing_offer:
@@ -497,7 +559,9 @@ def search_customer_by_phone():
             )
             db.session.add(new_offer)
             db.session.commit()
-            print(f"DEBUG: On-the-fly offer generated for {customer.name} at shop {shop_id}")
+            print(f"DEBUG: Generated new offer for {customer.name} at shop {shop_id}")
+        else:
+            print(f"DEBUG: Found existing UNUSED offer {existing_offer.offer_code} for {customer.name}")
         
     birthday_discount = 0
     offer_code = None
@@ -509,6 +573,8 @@ def search_customer_by_phone():
             shop_id=shop_id,
             is_used=False
         ).filter(BirthdayOffer.valid_until >= today).first()
+        
+        print(f"DEBUG: search_customer - Customer {customer.name}, Shop {shop_id}, Found offer: {offer}")
         
         if offer:
             birthday_discount = offer.discount_percent
