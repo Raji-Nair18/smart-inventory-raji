@@ -360,6 +360,23 @@ const ShopDashboard = () => {
       } catch (e) { console.error(e); }
   };
 
+  const handleDeleteCustomer = async (id) => {
+    if(!window.confirm('Delete this customer permanently? This action cannot be undone.')) return;
+    try {
+        const res = await fetch(`${API_BASE_URL}/customers/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            alert('Customer deleted permanently');
+            fetchCustomers();
+        } else {
+            const data = await res.json();
+            alert(data.message || 'Deletion failed');
+        }
+    } catch (e) { console.error(e); }
+  };
+
   const handleAddCustomer = async (e) => {
       e.preventDefault();
       console.log("DEBUG: handleAddCustomer triggered", newCustomer);
@@ -1420,32 +1437,51 @@ const ShopDashboard = () => {
                                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">DOB</th>
                                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Address</th>
                                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Joined</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {customers.map(customer => {
-                                    const isBirthdayToday = customer.dob && (() => {
-                                        const today = new Date();
-                                        const dob = new Date(customer.dob);
-                                        return dob.getUTCMonth() === today.getUTCMonth() && dob.getUTCDate() === today.getUTCDate();
-                                    })();
+                                    const isBirthdayToday = customer.is_birthday_today;
+                                    const isWithinWindow = customer.is_within_birthday_window;
+                                    
                                     return (
-                                    <tr key={customer.id} className={isBirthdayToday ? 'bg-yellow-50' : ''}>
+                                    <tr key={customer.id} className={isBirthdayToday ? 'bg-yellow-50' : isWithinWindow ? 'bg-blue-50' : ''}>
                                         <td className="px-6 py-4 text-sm font-bold text-indigo-600">{customer.customer_id_code || '-'}</td>
                                         <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                                            {customer.name}
-                                            {isBirthdayToday && <span className="ml-2 text-xs bg-pink-100 text-pink-700 px-2 py-0.5 rounded-full font-bold shadow-sm animate-pulse border border-pink-200">🎂 TODAY</span>}
+                                            <div className="flex flex-col">
+                                                <span>{customer.name}</span>
+                                                {isBirthdayToday && (
+                                                    <span className="mt-1 text-[10px] w-fit bg-pink-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-tighter shadow-sm animate-bounce">
+                                                        🎂 BIRTHDAY TODAY
+                                                    </span>
+                                                )}
+                                                {!isBirthdayToday && isWithinWindow && (
+                                                    <span className="mt-1 text-[10px] w-fit bg-blue-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-tighter shadow-sm">
+                                                        🎈 Birthday Week
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.email}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.phone || '-'}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.dob || '-'}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.address || '-'}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500">{customer.joined}</td>
+                                        <td className="px-6 py-4 text-sm font-medium">
+                                            <button 
+                                                onClick={() => handleDeleteCustomer(customer.id)}
+                                                className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-lg transition-colors"
+                                                title="Delete Customer Permanently"
+                                            >
+                                                <FaTrash />
+                                            </button>
+                                        </td>
                                     </tr>
                                     );
                                 })}
                                 {customers.length === 0 && (
-                                    <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">No customers found. Add one above to get started!</td></tr>
+                                    <tr><td colSpan="8" className="px-6 py-12 text-center text-gray-500">No customers found. Add one above to get started!</td></tr>
                                 )}
                             </tbody>
                         </table>

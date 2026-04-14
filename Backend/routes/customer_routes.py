@@ -186,16 +186,56 @@ def get_customers():
         
     shop = Shop.query.get(shop_id)
     customers = shop.customers_linked
-    return jsonify([{
-        "id": c.id,
-        "customer_id_code": c.customer_id_code,
-        "name": c.name,
-        "email": c.email,
-        "phone": c.phone,
-        "address": c.address,
-        "dob": c.dob,
-        "joined": c.created_at.strftime('%Y-%m-%d')
-    } for c in customers]), 200
+    
+    result = []
+    for c in customers:
+        is_today, is_in_window = check_birthday_window(c.dob)
+        result.append({
+            "id": c.id,
+            "customer_id_code": c.customer_id_code,
+            "name": c.name,
+            "email": c.email,
+            "phone": c.phone,
+            "address": c.address,
+            "dob": c.dob,
+            "joined": c.created_at.strftime('%Y-%m-%d'),
+            "is_birthday_today": is_today,
+            "is_within_birthday_window": is_in_window
+        })
+        
+    return jsonify(result), 200
+
+@customer_bp.route('/<int:cid>', methods=['DELETE'])
+@jwt_required()
+def delete_customer(cid):
+    current_user = get_jwt_identity()
+    shop_id = get_shop_id_for_user(current_user)
+    if not shop_id:
+        return jsonify({"message": "Shop not found"}), 404
+        
+    customer = Customer.query.get(cid)
+    if not customer:
+        return jsonify({"message": "Customer not found"}), 404
+        
+    # Remove customer from shop (since it's many-to-many)
+    shop = Shop.query.get(shop_id)
+    if shop in customer.shops:
+        customer.shops.remove(shop)
+        
+    # If customer is no longer linked to any shop and not a registered user, 
+    # we can delete them permanently from DB if requested, but user said "delete any customer permenantly"
+    # To be safe, if a shop owner deletes, it removes the link. 
+    # But if the user wants it "permenantly", we should delete the customer object if they are not a registered user.
+    # However, many-to-many link removal is safer for multi-shop systems.
+    # User said "delete any customer permenantly", let's delete the record.
+    
+    # If the customer has a user account, we shouldn't delete the User, 
+    # but we can remove the Customer record if that's what's intended.
+    # In this app, Customer is the profile linked to shops.
+    
+    db.session.delete(customer)
+    db.session.commit()
+    return jsonify({"message": "Customer deleted permanently"}), 200
 
 @customer_bp.route('/', methods=['POST'])
 @jwt_required()

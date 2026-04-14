@@ -111,6 +111,22 @@ const AdminDashboard = () => {
     } catch (err) { console.error(err); }
   };
 
+  const handleDeleteCustomer = async (id) => {
+    if(!window.confirm("Delete this customer permanently?")) return;
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/customers/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        alert('Customer deleted permanently');
+        fetchCustomers();
+        fetchStats();
+      }
+    } catch (err) { console.error(err); }
+  };
+
   const handleDeleteSupplier = async (id) => {
     if(!window.confirm("Delete this supplier?")) return;
     const token = getToken();
@@ -332,6 +348,7 @@ const AdminDashboard = () => {
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered Account?</th>
                               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Linked Shops</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                           </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -357,10 +374,15 @@ const AdminDashboard = () => {
                                         {c.linked_shops.length === 0 && <span className="text-gray-400 italic">No linked shops</span>}
                                     </div>
                                   </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                      <button onClick={() => handleDeleteCustomer(c.id)} className="text-red-600 hover:text-red-900 flex items-center space-x-1 bg-red-50 px-3 py-1 rounded-md">
+                                          <FaTrash /> <span>Delete</span>
+                                      </button>
+                                  </td>
                               </tr>
                           ))}
                           {customers.length === 0 && (
-                              <tr><td colSpan="4" className="px-6 py-4 text-center text-gray-500">No customers found</td></tr>
+                              <tr><td colSpan="5" className="px-6 py-4 text-center text-gray-500">No customers found</td></tr>
                           )}
                       </tbody>
                   </table>

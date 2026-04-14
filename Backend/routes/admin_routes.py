@@ -72,6 +72,17 @@ def get_customers():
         "registered_account": c.user.email if c.user else "No"
     } for c in customers]), 200
 
+@admin_bp.route('/customers/<int:cid>', methods=['DELETE'])
+@jwt_required()
+def delete_customer(cid):
+    customer = Customer.query.get(cid)
+    if not customer:
+        return jsonify({"message": "Customer not found"}), 404
+    
+    db.session.delete(customer)
+    db.session.commit()
+    return jsonify({"message": "Customer deleted permanently by admin"}), 200
+
 # --- SALESMAN MANAGEMENT ---
 @admin_bp.route('/salesmen', methods=['GET'])
 @jwt_required()
