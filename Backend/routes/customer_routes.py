@@ -53,18 +53,52 @@ def debug_birthday_status():
     if customer.dob:
         try:
             import re
+            from datetime import datetime as dt
+            
+            # Month name to number mapping
+            month_map = {
+                'january': 1, 'jan': 1,
+                'february': 2, 'feb': 2,
+                'march': 3, 'mar': 3,
+                'april': 4, 'apr': 4,
+                'may': 5,
+                'june': 6, 'jun': 6,
+                'july': 7, 'jul': 7,
+                'august': 8, 'aug': 8,
+                'september': 9, 'sep': 9, 'sept': 9,
+                'october': 10, 'oct': 10,
+                'november': 11, 'nov': 11,
+                'december': 12, 'dec': 12
+            }
+            
+            dob_str = str(customer.dob).strip().lower()
+            
             patterns = [
                 (r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', 2, 3),  # YYYY-MM-DD
                 (r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', 1, 2),  # DD-MM-YYYY
                 (r'(\d{1,2})[-/](\d{1,2})', 1, 2),             # MM-DD
+                (r'(\d{1,2})\s+([a-z]+)\s+(\d{4})', 1, 2),   # DD Month YYYY
+                (r'([a-z]+)\s+(\d{1,2}),?\s+(\d{4})', 2, 1),  # Month DD, YYYY
             ]
+            
             for pattern, m_group, d_group in patterns:
-                match = re.search(pattern, customer.dob)
+                match = re.search(pattern, dob_str)
                 if match:
-                    m, d = match.group(m_group), match.group(d_group)
-                    dob_month_day = f"{int(m):02d}-{int(d):02d}"
-                    dob_month = int(m)
-                    dob_day = int(d)
+                    m_str = match.group(m_group)
+                    d_str = match.group(d_group)
+                    
+                    # Handle month name
+                    if m_str.isalpha():
+                        m_str = m_str[:3].lower()
+                        if m_str in month_map:
+                            dob_month = month_map[m_str]
+                        else:
+                            continue
+                    else:
+                        dob_month = int(m_str)
+                    
+                    dob_day = int(d_str)
+                    dob_month_day = f"{int(dob_month):02d}-{int(dob_day):02d}"
                     break
             
             if dob_month_day == today.strftime('%m-%d'):
@@ -235,6 +269,8 @@ def add_customer():
                 if is_birthday_today or is_within_window:
                     # Generate offers for ALL linked shops
                     for linked_shop in new_customer.shops:
+                        # Check if ANY offer (USED OR UNUSED) exists for this birthday period
+                        # If an offer exists with valid_until >= today, don't generate another one
                         existing_offer = BirthdayOffer.query.filter_by(
                             customer_id=new_customer.id, 
                             shop_id=linked_shop.id
@@ -386,6 +422,7 @@ def link_to_shop():
                     
                     if is_birthday_today or is_within_window:
                         # Generate offer for this newly linked shop
+                        # Check if ANY offer exists for this shop for this birthday period
                         existing_offer = BirthdayOffer.query.filter_by(
                             customer_id=customer.id, 
                             shop_id=shop.id
@@ -503,11 +540,10 @@ def get_birthday_offers():
     if is_within_birthday_window:
         print(f"DEBUG: Generating offers for {len(customer.shops)} shops")
         for shop in customer.shops:
-            # Check if UNUSED and VALID offer exists for this shop
+            # Check if ANY offer (used or unused) exists for this shop for this birthday period
             existing_offer = BirthdayOffer.query.filter_by(
                 customer_id=customer.id, 
-                shop_id=shop.id,
-                is_used=False
+                shop_id=shop.id
             ).filter(BirthdayOffer.valid_until >= today).first()
             
             if not existing_offer:
@@ -604,11 +640,10 @@ def search_customer_by_phone():
 
     # Generate offers on the fly if within birthday window and shop doesn't have one yet
     if is_within_birthday_window and shop_id:
-        # Check for UNUSED and VALID offer only
+        # Check for ANY valid offer (used or unused) for this period
         existing_offer = BirthdayOffer.query.filter_by(
             customer_id=customer.id, 
-            shop_id=shop_id,
-            is_used=False
+            shop_id=shop_id
         ).filter(BirthdayOffer.valid_until >= today).first()
         
         if not existing_offer:
@@ -627,7 +662,7 @@ def search_customer_by_phone():
             db.session.commit()
             print(f"DEBUG: Generated new offer for {customer.name} at shop {shop_id}")
         else:
-            print(f"DEBUG: Found existing UNUSED offer {existing_offer.offer_code} for {customer.name}")
+            print(f"DEBUG: Offer already exists for {customer.name} at shop {shop_id} (Used: {existing_offer.is_used})")
         
     birthday_discount = 0
     offer_code = None
