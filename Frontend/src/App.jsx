@@ -14,7 +14,7 @@ const App = () => {
 
   // Wake up the backend on app load (Render free tier cold start fix)
   useEffect(() => {
-    fetch(`${API_BASE_URL}/auth/shops`).catch(() => {});
+    fetch('https://smart-inventory-raji-1.onrender.com/').catch(() => {});
   }, []);
 
   return (
